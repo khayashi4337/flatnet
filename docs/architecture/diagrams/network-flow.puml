@@ -1,0 +1,32 @@
+@startuml network-flow
+!theme plain
+title Flatnet - ネットワークフロー（NAT問題の解消）
+
+participant "Member1\nブラウザ" as browser
+participant "社内\nネットワーク" as lan
+box "Host Windows" #LightYellow
+  participant "OpenResty\nGateway" as resty
+  participant "Lighthouse" as lh
+end box
+box "WSL2" #LightBlue
+  participant "Flatnet\nCNI" as cni
+  participant "Forgejo\nPod" as forgejo
+  participant "Runner\nPod" as runner
+end box
+
+== 社内メンバーのアクセス ==
+browser -> lan : HTTP Request
+lan -> resty : HTTP (社内IP)
+resty -> lh : Forgejo の Flatnet IP?
+lh --> resty : 10.42.0.10
+resty -> forgejo : proxy_pass\n(Flatnet tunnel,\nNAT透過)
+forgejo --> resty : Response
+resty --> browser : HTTP Response
+
+== Forgejo Actions (CI/CD) ==
+forgejo -> cni : Runner の Flatnet IP?
+cni --> forgejo : 10.42.0.20
+forgejo -> runner : Job dispatch\n(Flatnet direct,\nNAT不要)
+runner -> runner : Build / Test
+runner --> forgejo : Job result
+@enduml

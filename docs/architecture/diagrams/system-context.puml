@@ -1,0 +1,18 @@
+@startuml system-context
+!theme plain
+title Flatnet - System Context (C4 Level 1)
+
+actor "社内メンバー\n(Member1)" as member1
+actor "リモートメンバー\n(Member2)" as member2
+
+package "Flatnet System" as flatnet {
+  component "Flatnet Gateway\n(OpenResty)" as gateway
+  component "Flatnet Network" as network
+  component "Forgejo\n(Git Hosting)" as forgejo
+}
+
+member1 --> gateway : HTTP Request\n(ブラウザのみ)
+member2 --> gateway : HTTP Request\n(任意VPN経由)
+gateway --> network : Flatnet IP routing
+network --> forgejo : Direct access\n(NAT-free)
+@enduml

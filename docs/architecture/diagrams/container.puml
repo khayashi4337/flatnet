@@ -1,0 +1,34 @@
+@startuml container
+!theme plain
+title Flatnet - Container Diagram (C4 Level 2)
+
+actor "社内メンバー" as member1
+actor "リモートメンバー" as member2
+
+node "Host Windows" as host {
+  component "Flatnet Gateway" as gateway {
+    component "OpenResty\n(Nginx + Lua)" as resty
+  }
+  component "Flatnet Lighthouse" as lighthouse
+}
+
+node "WSL2" as wsl {
+  component "Podman + Flatnet CNI" as podman1 {
+    component "Forgejo" as forgejo
+  }
+  component "Podman + Flatnet CNI" as podman2 {
+    component "Forgejo Runner\n(PinP)" as runner {
+      component "Build / Test\n/ etc" as cicd
+    }
+  }
+}
+
+member1 --> resty : HTTP\n(社内ネットワーク)
+member2 --> resty : HTTP\n(VPN経由)
+resty --> lighthouse : ノード解決
+lighthouse ..> podman1 : Flatnet IP\nルーティング
+lighthouse ..> podman2 : Flatnet IP\nルーティング
+resty --> forgejo : proxy_pass\n(Flatnet IP)
+forgejo --> runner : Forgejo Actions
+runner --> cicd : CI/CD Job
+@enduml

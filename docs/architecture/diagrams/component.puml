@@ -1,0 +1,82 @@
+@startuml component
+!theme plain
+title Flatnet - Component Diagram (C4 Level 3)
+
+package "Flatnet CNI Plugin (Rust)" as cni {
+  class FlatnetCNI {
+    +add(container_id, netns): CNIResult
+    +del(container_id, netns): CNIResult
+    +check(container_id, netns): CNIResult
+    -read_config(stdin): FlatnetConfig
+    -write_result(stdout): void
+  }
+
+  class NetworkNamespace {
+    +create_interface(netns_path): TunDevice
+    +assign_ip(device, ip): void
+    +setup_routes(device, routes): void
+    +teardown(netns_path): void
+  }
+
+  class TunnelManager {
+    +create_tunnel(local_ip, remote_ip): Tunnel
+    +encrypt_packet(packet): EncryptedPacket
+    +decrypt_packet(packet): Packet
+    +close_tunnel(): void
+  }
+
+  class IPAddressManager {
+    +allocate_ip(container_id): FlatnetIP
+    +release_ip(container_id): void
+    +resolve_ip(container_id): FlatnetIP
+    -register_with_lighthouse(ip): void
+  }
+
+  FlatnetCNI --> NetworkNamespace : ネットワーク\n名前空間操作
+  FlatnetCNI --> IPAddressManager : IP割り当て
+  NetworkNamespace --> TunnelManager : トンネル生成
+  IPAddressManager --> LighthouseClient : IP登録/解決
+}
+
+package "Flatnet Gateway" as gw {
+  class Gateway {
+    +handle_request(req): Response
+    +resolve_backend(host): FlatnetIP
+    +proxy_pass(req, backend_ip): Response
+  }
+
+  class LuaRouter {
+    +route(req): UpstreamConfig
+    +health_check(backend): bool
+  }
+
+  Gateway --> LuaRouter : ルーティング判定
+}
+
+package "Flatnet Lighthouse" as lh {
+  class Lighthouse {
+    +register_node(node_id, flatnet_ip): void
+    +lookup_node(node_id): FlatnetIP
+    +list_nodes(): Node[]
+    +handle_punch(src, dst): void
+  }
+
+  class NodeRegistry {
+    -nodes: Map<NodeID, NodeInfo>
+    +add(node): void
+    +remove(node_id): void
+    +get(node_id): NodeInfo
+  }
+
+  Lighthouse --> NodeRegistry : ノード管理
+}
+
+class LighthouseClient {
+  +register(flatnet_ip): void
+  +lookup(node_id): FlatnetIP
+  +heartbeat(): void
+}
+
+LighthouseClient --> Lighthouse : gRPC / UDP
+Gateway --> Lighthouse : ノード解決
+@enduml
