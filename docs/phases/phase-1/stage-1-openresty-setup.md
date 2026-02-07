@@ -11,9 +11,9 @@ Windows 上に OpenResty をインストールし、基本的な HTTP サーバ�
 
 ## インプット（前提条件）
 
-- Windows 11 環境
+- Windows 10/11 環境
 - 管理者権限でのインストールが可能
-- ポート 80/443 が他のアプリケーションで使用されていない
+- ポート 80/443 が他のアプリケーションで使用されていない（設定ファイルで変更可能）
 
 ## 目標
 
@@ -29,6 +29,41 @@ Windows 上に OpenResty をインストールし、基本的な HTTP サーバ�
 - Windows Firewall の受信規則を追加
 - 動作確認用のテストページを設置
 
+## ディレクトリ構成と設定ファイル管理
+
+### 方針
+
+設定ファイルは WSL2 側のリポジトリで Git 管理し、Windows 側にデプロイする。
+
+```
+[WSL2] /home/kh/prj/flatnet/
+       └── config/
+           └── openresty/           ← Git 管理（正）
+               ├── nginx.conf
+               └── conf.d/
+                   └── default.conf
+
+           デプロイスクリプト (scripts/deploy-config.sh)
+                   │
+                   ▼
+[Windows] F:\flatnet\
+          ├── openresty\            ← OpenResty 本体
+          │   ├── nginx.exe
+          │   └── ...
+          └── config\               ← 設定ファイル（デプロイ先）
+              └── nginx.conf
+```
+
+### WSL2 から Windows へのパス
+
+```bash
+# WSL2 から Windows F: ドライブへアクセス
+/mnt/f/flatnet/openresty/
+
+# Windows から WSL2 へアクセス
+\\wsl$\Ubuntu\home\kh\prj\flatnet\
+```
+
 ## Sub-stages
 
 ### Sub-stage 1.1: OpenResty インストール
@@ -37,11 +72,19 @@ Windows 上に OpenResty をインストールし、基本的な HTTP サーバ�
 - OpenResty 公式サイトから Windows 版 ZIP をダウンロード
   - URL: https://openresty.org/en/download.html
   - Windows 版 (win64) を選択
-- `C:\openresty` に展開
+- `F:\flatnet\openresty` に展開
 - PATH 環境変数への追加（オプション）
 
+**ディレクトリ作成:**
+```powershell
+# PowerShell (管理者)
+mkdir F:\flatnet\openresty
+mkdir F:\flatnet\config
+mkdir F:\flatnet\logs
+```
+
 **完了条件:**
-- [ ] `C:\openresty\nginx.exe -v` でバージョンが表示される
+- [ ] `F:\flatnet\openresty\nginx.exe -v` でバージョンが表示される
 
 ### Sub-stage 1.2: 基本設定
 
@@ -55,10 +98,42 @@ Windows 上に OpenResty をインストールし、基本的な HTTP サーバ�
 - テスト用 index.html の作成
 - ログ出力の確認
 
+**nginx.conf 例 (F:\flatnet\config\nginx.conf):**
+```nginx
+worker_processes 1;
+error_log F:/flatnet/logs/error.log;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+    access_log    F:/flatnet/logs/access.log;
+
+    server {
+        listen 80;
+        server_name localhost;
+
+        location / {
+            root   html;
+            index  index.html;
+        }
+    }
+}
+```
+
+**起動コマンド:**
+```powershell
+cd F:\flatnet\openresty
+.\nginx.exe -c F:\flatnet\config\nginx.conf
+```
+
 **完了条件:**
 - [ ] `nginx.exe` が起動する
 - [ ] `http://localhost/` でテストページが表示される
-- [ ] `logs/error.log` にログが出力される
+- [ ] `F:\flatnet\logs\error.log` にログが出力される
 
 ### Sub-stage 1.3: Windows Firewall 設定
 
@@ -71,13 +146,39 @@ Windows 上に OpenResty をインストールし、基本的な HTTP サーバ�
   ```
 - nginx.exe へのプログラム許可（上記が機能しない場合）
   ```powershell
-  New-NetFirewallRule -DisplayName "OpenResty" -Direction Inbound -Program "C:\openresty\nginx.exe" -Action Allow
+  New-NetFirewallRule -DisplayName "OpenResty" -Direction Inbound -Program "F:\flatnet\openresty\nginx.exe" -Action Allow
   ```
 
 **完了条件:**
 - [ ] 同一 LAN 内の別端末から `http://<Windows IP>/` でアクセスできる
 
-### Sub-stage 1.4: サービス化（オプション）
+### Sub-stage 1.4: デプロイスクリプト作成
+
+**内容:**
+- WSL2 リポジトリの設定を Windows 側にデプロイするスクリプトを作成
+
+**スクリプト例 (scripts/deploy-config.sh):**
+```bash
+#!/bin/bash
+# WSL2 から Windows へ設定ファイルをデプロイ
+
+REPO_CONFIG="/home/kh/prj/flatnet/config/openresty"
+WIN_CONFIG="/mnt/f/flatnet/config"
+
+# 設定ファイルをコピー
+cp -r ${REPO_CONFIG}/* ${WIN_CONFIG}/
+
+echo "Deployed to ${WIN_CONFIG}"
+
+# OpenResty をリロード（オプション）
+# /mnt/f/flatnet/openresty/nginx.exe -s reload
+```
+
+**完了条件:**
+- [ ] `./scripts/deploy-config.sh` で設定がデプロイされる
+- [ ] デプロイ後に OpenResty が正常に動作する
+
+### Sub-stage 1.5: サービス化（オプション）
 
 **内容:**
 - Windows サービスとして登録（NSSM 等を使用）
@@ -88,10 +189,11 @@ Windows 上に OpenResty をインストールし、基本的な HTTP サーバ�
 
 ## 成果物
 
-- `C:\openresty\` - OpenResty インストールディレクトリ
-- `C:\openresty\conf\nginx.conf` - 基本設定ファイル
-- `C:\openresty\html\index.html` - テストページ
-- `C:\openresty\logs\` - ログディレクトリ
+- `F:\flatnet\openresty\` - OpenResty インストールディレクトリ
+- `F:\flatnet\config\nginx.conf` - 設定ファイル（デプロイ先）
+- `F:\flatnet\logs\` - ログディレクトリ
+- `/home/kh/prj/flatnet/config/openresty/` - 設定ファイル（Git 管理）
+- `/home/kh/prj/flatnet/scripts/deploy-config.sh` - デプロイスクリプト
 - Windows Firewall 受信規則
 
 ## 完了条件
@@ -100,8 +202,10 @@ Windows 上に OpenResty をインストールし、基本的な HTTP サーバ�
 - [ ] `http://localhost/` でデフォルトページが表示される
 - [ ] Windows Firewall で 80/443 ポートが開放されている
 - [ ] 社内 LAN の別端末からアクセスできる
+- [ ] 設定ファイルが WSL2 リポジトリで Git 管理されている
 
 ## 備考
 
 - HTTPS (TLS) 設定は Phase 1 のスコープ外。必要に応じて Stage 2 以降で追加
 - 本番運用でのセキュリティ強化は Phase 4 で対応
+- C ドライブの容量節約のため、すべて F ドライブに配置

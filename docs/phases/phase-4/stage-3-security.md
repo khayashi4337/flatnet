@@ -213,8 +213,8 @@ server {
     server_name flatnet.local;
 
     # Windows パスの場合
-    ssl_certificate C:/openresty/conf/ssl/server.crt;
-    ssl_certificate_key C:/openresty/conf/ssl/server.key;
+    ssl_certificate F:/flatnet/config/ssl/server.crt;
+    ssl_certificate_key F:/flatnet/config/ssl/server.key;
 
     # Modern configuration
     ssl_protocols TLSv1.2 TLSv1.3;
