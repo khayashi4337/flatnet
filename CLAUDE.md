@@ -64,6 +64,7 @@ src/                       # Rust ソースコード（Phase 2〜）
 - Windows 11 + WSL2 (Ubuntu 24.04)
 - Podman v4 系
 - OpenResty (Windows 版)
+- Windows 側のパス: `F:\flatnet\`（C ドライブの容量節約のため）
 
 ## 参考調査
 

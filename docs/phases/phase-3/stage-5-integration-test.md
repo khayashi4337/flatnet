@@ -22,6 +22,26 @@ Phase 3 全体の統合テストを実施し、マルチホスト環境での動
 - 運用手順書を完成させる
 - トラブルシューティングガイドを作成する
 
+## ディレクトリ構成
+
+```
+[WSL2] /home/kh/prj/flatnet/
+       ├── tests/
+       │   └── integration/
+       │       ├── phase3/
+       │       │   ├── test_basic.sh        ← 基本機能テスト
+       │       │   ├── test_escalation.sh   ← Graceful Escalation テスト
+       │       │   ├── test_failure.sh      ← 障害シナリオテスト
+       │       │   └── test_performance.sh  ← パフォーマンス測定
+       │       └── fixtures/
+       │           └── test-container/       ← テスト用コンテナ
+       └── docs/
+           └── operations/
+               ├── setup-guide.md           ← セットアップ手順書
+               ├── operations-guide.md      ← 運用手順書
+               └── troubleshooting.md       ← トラブルシューティング
+```
+
 ## 手段
 
 - 統合テストシナリオの実行
@@ -163,11 +183,16 @@ Phase 3 全体の統合テストを実施し、マルチホスト環境での動
 
 ## 成果物
 
-- 統合テスト結果レポート
-- パフォーマンス測定レポート
-- セットアップ手順書
-- 運用手順書
-- トラブルシューティングガイド
+| 種別 | パス | 説明 |
+|------|------|------|
+| テストスクリプト | `tests/integration/phase3/test_basic.sh` | 基本機能テスト |
+| テストスクリプト | `tests/integration/phase3/test_escalation.sh` | Graceful Escalation テスト |
+| テストスクリプト | `tests/integration/phase3/test_failure.sh` | 障害シナリオテスト |
+| テストスクリプト | `tests/integration/phase3/test_performance.sh` | パフォーマンス測定 |
+| ドキュメント | `docs/operations/setup-guide.md` | セットアップ手順書 |
+| ドキュメント | `docs/operations/operations-guide.md` | 運用手順書 |
+| ドキュメント | `docs/operations/troubleshooting.md` | トラブルシューティング |
+| レポート | `docs/phases/phase-3/test-results.md` | テスト結果レポート |
 
 ## 完了条件
 
@@ -262,3 +287,13 @@ ab -n 1000 -c 100 http://gateway-a/api/health
   - 対策: 可能な限り本番に近い環境でテスト
 - ドキュメントの陳腐化
   - 対策: バージョン管理、定期的なレビュー
+
+## Phase 3 完了後
+
+Stage 5 完了で Phase 3 は完了。[Phase 4: 本番運用準備](../phase-4/README.md) に進む。
+
+**Phase 4 で対応する項目:**
+- リモートメンバー対応（インターネット越え）
+- 監視・ログ基盤
+- セキュリティ強化（認証・認可の高度化）
+- Lighthouse の冗長化

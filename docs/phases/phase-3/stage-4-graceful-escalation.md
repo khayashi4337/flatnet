@@ -4,6 +4,8 @@
 
 Graceful Escalation パターンを実装する。初期接続は Gateway 経由で確実に行い、バックグラウンドで P2P 経路を確立して最適化する。P2P 失敗時は自動的に Gateway 経由にフォールバックする。
 
+**設計原則:** 信頼性 > 最適化（詳細は [フォールバック戦略](../../architecture/design-notes/fallback-strategy.md) 参照）
+
 ## ブランチ戦略
 
 - ブランチ名: `phase3/stage-4-graceful-escalation`
@@ -23,10 +25,30 @@ Graceful Escalation パターンを実装する。初期接続は Gateway 経由
 - P2P 失敗時は Gateway 経由にフォールバックする
 - 切り替えがクライアントから透過的に行われる
 
+## ディレクトリ構成
+
+```
+[Windows] F:\flatnet\
+          └── openresty\
+              └── lualib\
+                  └── flatnet\
+                      ├── registry.lua      ← Stage 3 で作成
+                      ├── sync.lua          ← Stage 3 で作成
+                      ├── escalation.lua    ← 接続状態管理
+                      ├── healthcheck.lua   ← ヘルスチェック
+                      └── routing.lua       ← ルーティング決定
+
+[WSL2] /home/kh/prj/flatnet/
+       └── config/
+           └── openresty/
+               └── conf.d/
+                   └── escalation.conf  ← パラメータ設定
+```
+
 ## 手段
 
-- 接続状態管理機構の実装
-- P2P 経路確立のバックグラウンド処理
+- 接続状態管理機構の実装（Lua shared dict）
+- P2P 経路確立のバックグラウンド処理（ngx.timer）
 - ヘルスチェックとフォールバック機構
 - メトリクス収集（オプション）
 
@@ -49,8 +71,16 @@ GATEWAY_FALLBACK - P2P 失敗後の Gateway フォールバック
 
 **完了条件:**
 - [ ] 接続状態の取得・更新 API が実装されている
+  ```bash
+  # 状態確認 API
+  curl http://10.100.1.1:8080/api/escalation/state?ip=10.100.2.10
+  # 期待: {"ip": "10.100.2.10", "state": "GATEWAY_ONLY"}
+  ```
 - [ ] 状態遷移が正しく動作する
 - [ ] 状態がログに記録される
+  ```powershell
+  Get-Content F:\flatnet\logs\error.log | Select-String "escalation"
+  ```
 
 ### Sub-stage 4.2: P2P 経路確立のバックグラウンド処理
 
@@ -134,18 +164,42 @@ end
 2. P2P 通信中に障害発生 → 即座に Gateway フォールバック
 3. フォールバック後に P2P 復旧 → 自動的に P2P に戻る
 
+**テスト手順例:**
+
+```bash
+# 1. 初期リクエスト（Gateway 経由）
+curl -v http://<Gateway-A>/container-b1/
+
+# 2. 状態確認（P2P_ATTEMPTING または P2P_ACTIVE になるのを待つ）
+watch -n 1 'curl -s http://10.100.1.1:8080/api/escalation/state?ip=10.100.2.10'
+
+# 3. P2P 障害をシミュレート（Host B で Nebula を一時停止）
+# Host B: Stop-Service Nebula
+
+# 4. フォールバック確認（リクエストがエラーなく返る）
+curl -v http://<Gateway-A>/container-b1/
+
+# 5. 復旧（Host B で Nebula を再開）
+# Host B: Start-Service Nebula
+
+# 6. P2P 再確立を確認
+watch -n 1 'curl -s http://10.100.1.1:8080/api/escalation/state?ip=10.100.2.10'
+```
+
 **完了条件:**
 - [ ] 切り替え時にクライアントエラーが発生しない
-- [ ] HTTP レスポンスが正常に返る
+- [ ] HTTP レスポンスが正常に返る（ステータス 200）
 - [ ] 長寿命接続（該当する場合）が維持される
 
 ## 成果物
 
-- 接続状態管理モジュール（Lua）
-- P2P 経路確立バックグラウンドワーカー
-- ヘルスチェックモジュール
-- フォールバックロジック
-- 切り替えテストスクリプト
+| 種別 | パス | 説明 |
+|------|------|------|
+| Lua モジュール | `F:\flatnet\openresty\lualib\flatnet\escalation.lua` | 接続状態管理 |
+| Lua モジュール | `F:\flatnet\openresty\lualib\flatnet\healthcheck.lua` | ヘルスチェック |
+| Lua モジュール | `F:\flatnet\openresty\lualib\flatnet\routing.lua` | ルーティング決定 |
+| OpenResty 設定 | `F:\flatnet\config\openresty\conf.d\escalation.conf` | パラメータ設定 |
+| テストスクリプト | `/home/kh/prj/flatnet/scripts/test-escalation.sh` | 切り替えテスト |
 
 ## 完了条件
 
@@ -240,3 +294,7 @@ Nebula のホールパンチ成功を検知する方法:
   - 対策: 切り替え時に短時間両方の経路を使用
 - ヘルスチェックの誤検知によるフラッピング
   - 対策: 複数回連続失敗で切り替え、バックオフ実装
+
+## 次のステップ
+
+Stage 4 完了後は [Stage 5: 統合テスト・ドキュメント](./stage-5-integration-test.md) に進み、Phase 3 全体の統合テストと運用ドキュメントを整備する。
