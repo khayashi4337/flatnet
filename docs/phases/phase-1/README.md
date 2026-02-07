@@ -1,68 +1,111 @@
-# Phase 1: 基盤構築
+# Phase 1: CNI Plugin 実装
 
 ## ゴール
-最小構成でFlatnet CNIプラグインが動作し、Podmanコンテナ間の通信ができる状態を作る。
+Rust製 CNI プラグインの全コンポーネントを実装し、コンテナ間でトンネル通信ができる状態を作る。
+
+## 対象コンポーネント（component.puml より）
+
+```
+package "Flatnet CNI Plugin (Rust)" {
+  FlatnetCNI
+  NetworkNamespace
+  TunnelManager
+  IPAddressManager
+  LighthouseClient (モック実装)
+}
+```
 
 ## Phase 1 完了条件
-- [ ] Podman で起動した2つのコンテナが Flatnet 経由で相互に ping できる
-- [ ] コンテナの起動・停止時に CNI プラグインが正しく呼ばれ、リソースがリークしない
+- [ ] Podman で起動した2つのコンテナが Flatnet トンネル経由で相互に通信できる
+- [ ] コンテナの起動・停止時に CNI プラグインが正しく動作し、リソースがリークしない
 - [ ] Forgejo + Runner が Flatnet 上で動作し、CI ジョブが実行できる
 
 ---
 
 ## Stages
 
-### Stage 1: CNIプラグインのスケルトン
+### Stage 1: FlatnetCNI スケルトン
 
-**概要**
-- Rust で最小限のCNIプラグインを実装
-- Podman から呼び出され、ADD/DEL/CHECK に応答できる
-- まずは静的IPを返すだけのモック実装
+**対象クラス:** `FlatnetCNI`
+
+**実装内容**
+- `add(container_id, netns)` → CNIResult
+- `del(container_id, netns)` → CNIResult
+- `check(container_id, netns)` → CNIResult
+- `read_config(stdin)` → FlatnetConfig
+- `write_result(stdout)`
 
 **完了条件**
-- [ ] `flatnet-cni` バイナリが `cargo build --release` でビルドできる
-- [ ] CNI_COMMAND=ADD で呼び出すと、有効な CNI Result JSON を stdout に出力する
-- [ ] CNI_COMMAND=DEL で呼び出すと、正常終了（exit 0）する
-- [ ] CNI_COMMAND=CHECK で呼び出すと、正常終了（exit 0）する
-- [ ] `podman run --network flatnet alpine echo hello` が成功する
+- [ ] `cargo build --release` でビルド成功
+- [ ] CNI_COMMAND=ADD → 有効な CNI Result JSON を stdout に出力
+- [ ] CNI_COMMAND=DEL → exit 0
+- [ ] CNI_COMMAND=CHECK → exit 0
+- [ ] `podman run --network flatnet alpine echo hello` が成功
 
 ---
 
-### Stage 2: ネットワーク名前空間の操作
+### Stage 2: NetworkNamespace 操作
 
-**概要**
-- コンテナのネットワーク名前空間にインターフェースを作成
-- IP割り当てとルーティング設定
+**対象クラス:** `NetworkNamespace`
+
+**実装内容**
+- `create_interface(netns_path)` → TunDevice
+- `assign_ip(device, ip)`
+- `setup_routes(device, routes)`
+- `teardown(netns_path)`
 
 **完了条件**
-- [ ] コンテナ内に `flatnet0` インターフェースが作成される
-- [ ] 指定したサブネット（例: 10.100.0.0/16）から IP が割り当てられる
+- [ ] コンテナ内にネットワークインターフェースが作成される
+- [ ] 指定したサブネットから IP が割り当てられる
 - [ ] コンテナ内から `ip addr` で割り当てられた IP を確認できる
 - [ ] コンテナ停止時にインターフェースが正しくクリーンアップされる
 
 ---
 
-### Stage 3: メッシュトンネルの統合
+### Stage 3: IPAddressManager 実装
 
-**概要**
-- オーバーレイネットワークのトンネル機能を組み込み
-- コンテナ間の直接通信を実現
+**対象クラス:** `IPAddressManager`, `LighthouseClient`（モック）
+
+**実装内容**
+- `allocate_ip(container_id)` → FlatnetIP
+- `release_ip(container_id)`
+- `resolve_ip(container_id)` → FlatnetIP
+- `register_with_lighthouse(ip)` → モック実装（ローカルファイル or メモリ）
 
 **完了条件**
-- [ ] 同一ホスト上の2つのコンテナが Flatnet IP で相互に ping できる
-- [ ] コンテナ間で TCP 通信ができる（例: nc でメッセージ送受信）
-- [ ] 3つ以上のコンテナ間でも通信が成立する
+- [ ] コンテナ起動時に一意の Flatnet IP が割り当てられる
+- [ ] 複数コンテナで IP が重複しない
+- [ ] コンテナ停止時に IP が解放される
+- [ ] container_id から Flatnet IP を解決できる
 
 ---
 
-### Stage 4: Forgejo統合テスト
+### Stage 4: TunnelManager 実装
 
-**概要**
-- Forgejo + Runner をFlatnet CNI上で起動
-- git push → CI実行の一連のフローを検証
+**対象クラス:** `TunnelManager`
+
+**実装内容**
+- `create_tunnel(local_ip, remote_ip)` → Tunnel
+- `encrypt_packet(packet)` → EncryptedPacket
+- `decrypt_packet(packet)` → Packet
+- `close_tunnel()`
 
 **完了条件**
-- [ ] Forgejo が Flatnet 上で起動し、ブラウザからアクセスできる
+- [ ] コンテナ間でトンネルが確立される
+- [ ] パケットが暗号化されて送受信される
+- [ ] 2つのコンテナ間で ping が通る
+- [ ] TCP 通信ができる（nc でメッセージ送受信）
+
+---
+
+### Stage 5: Forgejo 統合テスト
+
+**検証内容**
+- Forgejo + Runner を Flatnet CNI 上で起動
+- git push → CI 実行の一連のフローを検証
+
+**完了条件**
+- [ ] Forgejo が Flatnet 上で起動する
 - [ ] Forgejo Runner が Forgejo に接続し、オンライン状態になる
 - [ ] テストリポジトリに push すると、Forgejo Actions ワークフローが実行される
 - [ ] ワークフロー内で `echo "Hello from Flatnet"` が成功する
@@ -72,5 +115,5 @@
 
 ## 成果物
 - `flatnet-cni` バイナリ（Rust）
-- Podman用ネットワーク設定ファイル（`/etc/cni/net.d/flatnet.conflist`）
-- 動作検証手順書（`docs/phases/phase-1/verification.md`）
+- Podman用ネットワーク設定ファイル
+- Phase 1 動作検証手順書
