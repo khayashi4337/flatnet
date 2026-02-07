@@ -1,0 +1,38 @@
+# Forgejo Podman Compose 設定
+# Phase 1 Stage 3: Forgejo 統合
+#
+# 使用方法:
+#   cd containers/forgejo
+#   podman-compose up -d
+#
+# 注意: WSL2 IP が変わった場合は OpenResty の upstream も更新が必要
+
+version: "3"
+
+services:
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:9
+    container_name: forgejo
+    restart: unless-stopped
+    ports:
+      # WSL2 内からアクセス可能にする
+      # OpenResty からは WSL2 IP:3000 経由でプロキシ
+      - "3000:3000"
+    volumes:
+      # データ永続化（Git リポジトリ等）
+      # :Z は SELinux/Podman のラベリング用
+      - "${HOME}/forgejo/data:/data:Z"
+      # 設定ファイル（app.ini 等）
+      - "${HOME}/forgejo/config:/etc/gitea:Z"
+    environment:
+      # タイムゾーン設定
+      - TZ=Asia/Tokyo
+      # 初回セットアップ時に管理者を禁止（セキュリティ）
+      # 初期設定後は true に変更推奨
+      # - FORGEJO__security__INSTALL_LOCK=false
+    networks:
+      - flatnet
+
+networks:
+  flatnet:
+    driver: bridge

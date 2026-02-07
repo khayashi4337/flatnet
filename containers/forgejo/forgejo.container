@@ -1,0 +1,71 @@
+# Flatnet - Forgejo Container Quadlet Definition
+# Phase 1, Stage 3: Forgejo Integration
+#
+# This is a systemd Quadlet definition for running Forgejo as a user service.
+# Quadlet automatically generates a systemd unit file from this container definition.
+#
+# Installation:
+#   1. Copy to ~/.config/containers/systemd/forgejo.container
+#   2. Run: systemctl --user daemon-reload
+#   3. Run: systemctl --user enable --now forgejo
+#
+# Prerequisites:
+#   - WSL2 with systemd enabled (/etc/wsl.conf: [boot] systemd=true)
+#   - Data directories created: ~/forgejo/data and ~/forgejo/config
+#   - Podman installed and working
+#
+# Management:
+#   - Status: systemctl --user status forgejo
+#   - Logs:   journalctl --user -u forgejo
+#   - Stop:   systemctl --user stop forgejo
+#   - Start:  systemctl --user start forgejo
+
+[Unit]
+Description=Forgejo Git Service (Flatnet Gateway)
+Documentation=https://forgejo.org/docs/
+After=local-fs.target network-online.target
+Wants=network-online.target
+
+[Container]
+# コンテナ名（podman ps で表示される名前）
+ContainerName=forgejo
+
+# Forgejo 公式イメージ（メジャーバージョン固定）
+# Codeberg.org からの公式イメージを使用
+Image=codeberg.org/forgejo/forgejo:9
+
+# ポートマッピング
+# WSL2 の 3000 番ポートで Forgejo にアクセス可能
+PublishPort=3000:3000
+
+# ボリュームマウント
+# %h はユーザーのホームディレクトリに展開される
+# :Z は SELinux/Podman のラベリング用
+Volume=%h/forgejo/data:/data:Z
+Volume=%h/forgejo/config:/etc/gitea:Z
+
+# 環境変数
+Environment=TZ=Asia/Tokyo
+
+# ヘルスチェック（オプション）
+# Forgejo の /api/healthz エンドポイントを使用
+HealthCmd=curl -f http://localhost:3000/api/healthz || exit 1
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+HealthStartPeriod=60s
+
+[Service]
+# 再起動ポリシー
+Restart=always
+RestartSec=10
+
+# 起動タイムアウト（イメージプル時間を考慮）
+TimeoutStartSec=300
+
+# 停止タイムアウト
+TimeoutStopSec=30
+
+[Install]
+# systemctl --user enable forgejo で自動起動
+WantedBy=default.target
