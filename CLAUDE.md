@@ -19,6 +19,7 @@ WSL2 + Podman 環境の多段 NAT 問題を解消するゲートウェイと CNI
 
 - CNI Plugin 実装言語: Rust
 - Gateway: OpenResty (Nginx + Lua) on Windows
+- Lighthouse: 既存の Nebula Lighthouse を利用（クライアントには見せない）
 - Container Runtime: Podman on WSL2
 - ドキュメント管理: C4 モデルベース
 - 計画粒度: Phase > Stage > Sub-stage

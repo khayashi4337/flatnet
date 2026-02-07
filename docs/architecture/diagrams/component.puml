@@ -3,27 +3,23 @@
 title Flatnet - Component Diagram (C4 Level 3)
 
 note as N1
-  **設計判断: Gateway と Daemon の関係**
-  - OpenResty (HTTP/L7) と Daemon (UDP/L3-4) はプロトコルが異なるため別プロセス
-  - ただしデプロイ単位としてはセットで動く（同一ホスト上に共存）
-  - 外部からは "Flatnet Gateway" という1つの論理コンポーネントとして見える
-  - OpenResty は Flatnet Daemon に問い合わせてコンテナの宛先IPを解決する
+  **設計判断: Gateway と Nebula Lighthouse の関係**
+  - OpenResty (HTTP/L7) と Nebula Lighthouse (UDP) は別プロセス
+  - デプロイ単位としてはセットで動く（同一 Windows ホスト上）
+  - 外部クライアントからは "Flatnet Gateway" として見える
+  - Nebula の存在はクライアントに露出しない（カプセル化）
 end note
 
 note as N2
-  **接続フェーズ（e4mc調査より）**
-  Phase 0-1: Gateway が担当（シグナリング + 中継）
-  Phase 2-3: Daemon + CNI が担当（NAT越え + P2P）
-
-  **フォールバック戦略: Graceful Escalation**
-  - 初期接続: Gateway 経由（確実）
-  - P2P 確立: バックグラウンドで試行
-  - P2P 失敗: Gateway 経由を維持（接続断なし）
+  **Lighthouse 方針**
+  既存の Nebula Lighthouse を利用する。
+  - Phase 1-2: 不要（ローカル WSL2 のみ）
+  - Phase 3: 導入（マルチホスト対応時）
 end note
 
 package "Flatnet Gateway (Host Windows)" as gateway_pkg {
 
-  package "OpenResty Layer (HTTP/L7)" as resty_pkg {
+  package "OpenResty (HTTP/L7)" as resty_pkg {
     class Gateway {
       +handle_request(req): Response
       +resolve_backend(host): FlatnetIP
@@ -32,93 +28,82 @@ package "Flatnet Gateway (Host Windows)" as gateway_pkg {
 
     class LuaRouter {
       +route(req): UpstreamConfig
-      +query_daemon(hostname): FlatnetIP
+      +query_lighthouse(hostname): FlatnetIP
       +health_check(backend): bool
     }
 
     Gateway --> LuaRouter : ルーティング判定
   }
 
-  package "Flatnet Daemon (UDP/L3-4)" as daemon_pkg {
-    class Lighthouse {
+  package "Nebula Lighthouse (UDP)" as lighthouse_pkg #LightGray {
+    class Lighthouse <<external>> {
       +register_node(node_id, flatnet_ip, endpoint): void
       +lookup_node(node_id): FlatnetIP
       +list_nodes(): Node[]
       +handle_punch(src, dst): void
     }
 
-    class NodeRegistry {
-      -nodes: Map<NodeID, NodeInfo>
-      +add(node): void
-      +remove(node_id): void
-      +get(node_id): NodeInfo
-    }
-
-    class TunnelEndpoint {
-      +accept_tunnel(remote): Tunnel
-      +forward_to_wsl(packet): void
-      +receive_from_wsl(packet): void
-    }
-
-    Lighthouse --> NodeRegistry : ノード管理
-    Lighthouse --> TunnelEndpoint : NAT穴あけ後の\nトンネル確立
+    note bottom of Lighthouse
+      既存の Nebula Lighthouse を利用
+      Phase 3 で導入予定
+    end note
   }
 
-  LuaRouter --> Lighthouse : コンテナIP解決\n(Unix socket / HTTP)
+  LuaRouter --> Lighthouse : ノード解決\n(Phase 3)
 }
 
-package "Flatnet CNI Plugin (WSL2, Rust)" as cni_pkg {
-  class FlatnetCNI {
-    +add(container_id, netns): CNIResult
-    +del(container_id, netns): CNIResult
-    +check(container_id, netns): CNIResult
-    -read_config(stdin): FlatnetConfig
-    -write_result(stdout): void
+package "WSL2" as wsl_pkg {
+
+  package "Flatnet CNI Plugin (Rust)" as cni_pkg {
+    class FlatnetCNI {
+      +add(container_id, netns): CNIResult
+      +del(container_id, netns): CNIResult
+      +check(container_id, netns): CNIResult
+    }
+
+    class NetworkNamespace {
+      +create_interface(netns_path): Device
+      +assign_ip(device, ip): void
+      +setup_routes(device, routes): void
+      +teardown(netns_path): void
+    }
+
+    class IPAddressManager {
+      +allocate_ip(container_id): FlatnetIP
+      +release_ip(container_id): void
+    }
+
+    FlatnetCNI --> NetworkNamespace
+    FlatnetCNI --> IPAddressManager
   }
 
-  class NetworkNamespace {
-    +create_interface(netns_path): TunDevice
-    +assign_ip(device, ip): void
-    +setup_routes(device, routes): void
-    +teardown(netns_path): void
+  package "Nebula Client (Phase 3)" as nebula_client_pkg #LightGray {
+    class NebulaClient <<external>> {
+      +connect_to_lighthouse(): void
+      +create_tunnel(): Tunnel
+    }
+
+    note bottom of NebulaClient
+      Phase 3 で導入予定
+      CNI Plugin と連携
+    end note
   }
 
-  class TunnelManager {
-    +connect_to_daemon(daemon_addr): void
-    +create_tunnel(local_ip, remote_ip): Tunnel
-    +encrypt_packet(packet): EncryptedPacket
-    +decrypt_packet(packet): Packet
-    +close_tunnel(): void
-  }
-
-  class IPAddressManager {
-    +allocate_ip(container_id): FlatnetIP
-    +release_ip(container_id): void
-    +resolve_ip(container_id): FlatnetIP
-  }
-
-  class DaemonClient {
-    +register(container_id, flatnet_ip): void
-    +unregister(container_id): void
-    +heartbeat(): void
-  }
-
-  FlatnetCNI --> NetworkNamespace : ネットワーク\n名前空間操作
-  FlatnetCNI --> IPAddressManager : IP割り当て
-  FlatnetCNI --> DaemonClient : コンテナ登録
-  NetworkNamespace --> TunnelManager : トンネル接続
-  DaemonClient --> Lighthouse : gRPC / UDP\n(コンテナ登録・解決)
-  TunnelManager --> TunnelEndpoint : 暗号化トンネル\n(UDP)
+  cni_pkg ..> nebula_client_pkg : Phase 3 で連携
 }
 
-note bottom of cni_pkg
-  CNI Plugin は Podman から呼び出され、
-  コンテナを Flatnet トンネルに接続する
+nebula_client_pkg --> lighthouse_pkg : Nebula プロトコル\n(Phase 3)
+
+note as N3
+  **Phase 別の構成**
+  Phase 1: OpenResty → WSL2 (直接プロキシ)
+  Phase 2: OpenResty → CNI Plugin (IP 自動管理)
+  Phase 3: + Nebula Lighthouse/Client (マルチホスト)
 end note
 
 note bottom of gateway_pkg
   社内メンバーは HTTP のみで
   Flatnet 内のサービスにアクセス可能
-  （VPNクライアント不要）
+  （Nebula インストール不要）
 end note
 @enduml
