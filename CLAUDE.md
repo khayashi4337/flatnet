@@ -2,11 +2,17 @@
 
 ## プロジェクト概要
 
-WSL2 + Podman 環境の多段 NAT 問題を解消するゲートウェイと CNI プラグイン。
+**Flatnet = Podman 用 CNI プラグイン + Host Windows 側の窓口（Gateway）**
 
 ```
-問題: 社内LAN → Windows → WSL2 → コンテナ（3段NAT）
-解決: OpenResty を窓口としてカプセル化し、NAT 地獄を解消
+提供するもの:
+1. CNI Plugin: Podman のネットワークプラグイン（WSL2 側）
+2. Gateway:    Host Windows 側の窓口（OpenResty）
+
+解決する問題:
+  社内LAN → Windows → WSL2 → コンテナ（3段NAT）
+  ↓
+  社内LAN → Gateway → コンテナ（フラットに到達）
 ```
 
 ## 設計原則

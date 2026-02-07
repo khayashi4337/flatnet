@@ -1,12 +1,22 @@
 # Flatnet
 
-NAT-free container networking.
+NAT-free container networking for WSL2 + Podman.
 
 > ⚠️ This project is under active development.
 
 ## What is Flatnet?
 
-Flatnet は、WSL2 + Podman 環境における多段NAT問題を解消し、コンテナへの直接到達性を提供するネットワーキングツールです。
+Flatnet は 2 つのコンポーネントを提供します：
+
+1. **CNI Plugin** — Podman 用ネットワークプラグイン（WSL2 側）
+2. **Gateway** — Host Windows 側の窓口（OpenResty）
+
+これにより、WSL2 + Podman 環境の多段 NAT 問題を解消し、社内 LAN からコンテナへフラットに到達できます。
+
+```
+Before: 社内LAN → Windows → WSL2 → コンテナ（3段NAT）
+After:  社内LAN → Gateway → コンテナ（フラット）
+```
 
 ## Architecture
 
