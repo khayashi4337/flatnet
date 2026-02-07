@@ -117,7 +117,11 @@ e4mc に近いが、データプレーンにもフォールバックを追加。
 - [ ] フォールバック時のセッション維持方法
 - [ ] P2P 再試行のバックオフ戦略
 
+**注記**: これらの詳細は Phase 3 Stage 4 で決定・実装される。
+詳細は [Phase 3 Stage 4: Graceful Escalation 実装](../../phases/phase-3/stage-4-graceful-escalation.md) を参照。
+
 ## 関連ドキュメント
 
 - [e4mc 調査](../research/e4mc-analysis.md)
 - [component.puml](../diagrams/component.puml)
+- [Phase 3: マルチホスト対応](../../phases/phase-3/README.md)
