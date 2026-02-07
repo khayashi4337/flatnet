@@ -19,9 +19,9 @@ Flatnet は、WSL2 + Podman 環境における多段NAT問題を解消し、コ�
 
 | Phase | 概要 | 状態 |
 |-------|------|------|
-| [Phase 1](docs/phases/phase-1/README.md) | 基盤構築 - CNIプラグイン実装 | 進行中 |
-| Phase 2 | Gateway統合 - OpenRestyによる外部公開 | 未着手 |
-| Phase 3 | マルチノード対応 - 複数ホスト間通信 | 未着手 |
+| [Phase 1](docs/phases/phase-1/README.md) | Gateway 基盤 - OpenResty で NAT 地獄を解消 | 設計中 |
+| Phase 2 | CNI Plugin - コンテナ管理の自動化 | 未着手 |
+| Phase 3 | マルチホスト - 複数ホスト間通信 | 未着手 |
 | Phase 4 | 本番運用準備 - 監視・セキュリティ | 未着手 |
 
 ## Tech Stack

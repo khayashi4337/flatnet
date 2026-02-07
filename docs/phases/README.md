@@ -1,46 +1,55 @@
 # Flatnet ロードマップ
 
-全体を4つのPhaseに分けて段階的に構築する。
+## コンセプト
+
+```
+問題: WSL2 + Podman 環境の NAT 地獄
+      社内LAN → Windows → WSL2 → コンテナ（3段NAT）
+
+解決: OpenResty を窓口としてカプセル化
+      社内メンバーは HTTP のみでコンテナに到達
+      Nebula 等のクライアントインストール不要
+```
 
 アーキテクチャ図: [component.puml](../architecture/diagrams/component.puml)
 
 ---
 
-## Phase 1: CNI Plugin 実装
+## Phase 1: Gateway 基盤
 
 | 項目 | 内容 |
 |------|------|
-| **前提条件** | WSL2 + Podman がインストール済み、Rust 開発環境が利用可能 |
-| **目標** | Rust製 CNI プラグインが動作し、コンテナ間でオーバーレイ通信ができる |
-| **内容** | FlatnetCNI (ADD/DEL/CHECK)、NetworkNamespace操作、TunnelManager、IPAddressManager の実装 |
-| **終了条件** | Podman上の2コンテナが Flatnet トンネル経由で相互に通信できる |
-| **備考** | Lighthouse はモック/ローカル実装で代替可能。本格実装は Phase 3 |
+| **前提条件** | Windows + WSL2 環境、OpenResty インストール可能 |
+| **目標** | 社内メンバーがブラウザから WSL2 内のサービスにアクセスできる |
+| **内容** | OpenResty を Windows 上で起動、WSL2 内へ HTTP プロキシ |
+| **終了条件** | ブラウザから `http://host/` で WSL2 内の Forgejo にアクセス可能 |
+| **備考** | この時点では CNI は未実装。手動で WSL2 内サービスを設定 |
 
 詳細: [Phase 1 詳細](./phase-1/README.md)
 
 ---
 
-## Phase 2: Gateway 統合
+## Phase 2: CNI Plugin 実装
 
 | 項目 | 内容 |
 |------|------|
-| **前提条件** | Phase 1 完了、Windows 上で OpenResty が利用可能 |
-| **目標** | 社内LANからブラウザで Flatnet 上のサービスにアクセスできる |
-| **内容** | Gateway (OpenResty)、LuaRouter の実装、TLS終端、Flatnet IP へのプロキシ |
-| **終了条件** | 社内LANのブラウザから Forgejo UI にアクセスできる |
-| **備考** | VPNクライアント不要でアクセス可能にすることが重要 |
+| **前提条件** | Phase 1 完了、Rust 開発環境、Podman インストール済み |
+| **目標** | コンテナ起動時に自動で Flatnet IP が割り当てられ、Gateway から到達可能 |
+| **内容** | Rust 製 CNI プラグイン、IP 割り当て、Gateway への自動登録 |
+| **終了条件** | `podman run --network flatnet` でコンテナ起動 → ブラウザからアクセス可能 |
+| **備考** | WSL2 内のローカル通信。トンネル/暗号化は不要 |
 
 ---
 
-## Phase 3: Lighthouse 本格実装
+## Phase 3: マルチホスト対応（将来拡張）
 
 | 項目 | 内容 |
 |------|------|
-| **前提条件** | Phase 2 完了、複数ホスト環境が利用可能 |
-| **目標** | 複数ホストにまたがるコンテナが Flatnet で直接通信できる |
-| **内容** | Lighthouse サーバー、NodeRegistry、LighthouseClient の本格実装、NAT穴あけ (handle_punch) |
-| **終了条件** | 異なるホスト上のコンテナ同士が Flatnet IP で相互に通信できる |
-| **備考** | Phase 1 のモック Lighthouse を本番実装に置き換え |
+| **前提条件** | Phase 2 完了、複数の Windows+WSL2 ホストが存在 |
+| **目標** | 複数ホストのコンテナが相互に通信できる |
+| **内容** | ホスト間トンネル、Lighthouse によるノード管理 |
+| **終了条件** | 異なるホスト上のコンテナ同士が Flatnet IP で通信可能 |
+| **備考** | e4mc 調査の知見を活用。Graceful Escalation パターン |
 
 ---
 
@@ -48,35 +57,33 @@
 
 | 項目 | 内容 |
 |------|------|
-| **前提条件** | Phase 3 完了 |
-| **目標** | 安定した本番運用ができる状態にする |
-| **内容** | 監視・ログ収集、障害時の自動復旧、セキュリティ強化、ドキュメント整備 |
-| **終了条件** | 1週間の連続運用テストを問題なく完了、運用手順書が整備されている |
-| **備考** | リモートメンバー対応（VPN経由アクセス）もこのフェーズで検討 |
+| **前提条件** | Phase 3 完了（または Phase 2 で十分な場合はスキップ）|
+| **目標** | 安定した本番運用ができる状態 |
+| **内容** | 監視・ログ、セキュリティ強化、ドキュメント整備 |
+| **終了条件** | 1週間の連続運用テスト完了、運用手順書整備 |
+| **備考** | リモートメンバー対応もこのフェーズで検討 |
 
 ---
 
-## コンポーネントと Phase の対応
+## Phase と解決する問題の対応
 
-| コンポーネント | Phase 1 | Phase 2 | Phase 3 | Phase 4 |
-|---------------|---------|---------|---------|---------|
-| FlatnetCNI | ● 実装 | | | |
-| NetworkNamespace | ● 実装 | | | |
-| TunnelManager | ● 実装 | | | |
-| IPAddressManager | ● 実装 | | | |
-| LighthouseClient | ○ モック | | ● 本実装 | |
-| Gateway | | ● 実装 | | |
-| LuaRouter | | ● 実装 | | |
-| Lighthouse | | | ● 実装 | |
-| NodeRegistry | | | ● 実装 | |
-
----
+```
+Phase 1: Gateway        → NAT 地獄の解消（手動設定）
+Phase 2: CNI Plugin     → コンテナ管理の自動化
+Phase 3: マルチホスト   → 複数ホスト間の連携
+Phase 4: 本番運用       → 安定性・運用性
+```
 
 ## 現在の進捗
 
 ```
-Phase 1: CNI Plugin      [=>            ] 設計中
-Phase 2: Gateway統合     [              ] 未着手
-Phase 3: Lighthouse      [              ] 未着手
-Phase 4: 本番運用準備    [              ] 未着手
+Phase 1: Gateway        [=>            ] 設計中
+Phase 2: CNI Plugin     [              ] 未着手
+Phase 3: マルチホスト   [              ] 未着手
+Phase 4: 本番運用       [              ] 未着手
 ```
+
+## 関連ドキュメント
+
+- [e4mc 調査](../architecture/research/e4mc-analysis.md) - 参考にした技術調査
+- [フォールバック戦略](../architecture/design-notes/fallback-strategy.md) - Phase 3 で活用

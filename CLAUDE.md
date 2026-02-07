@@ -1,27 +1,64 @@
 # Flatnet プロジェクトコンテキスト
 
 ## プロジェクト概要
-WSL2 + Podman環境の多段NAT問題を解消するCNIプラグインとゲートウェイ。
-利用者にVPNインストールを強要せず、サーバー側でNAT問題を吸収する設計。
+
+WSL2 + Podman 環境の多段 NAT 問題を解消するゲートウェイと CNI プラグイン。
+
+```
+問題: 社内LAN → Windows → WSL2 → コンテナ（3段NAT）
+解決: OpenResty を窓口としてカプセル化し、NAT 地獄を解消
+```
+
+## 設計原則
+
+- **クライアントは HTTP のみ**: Nebula 等のインストール不要、ブラウザで完結
+- **サーバー側で吸収**: NAT 問題は Gateway + CNI で解決
+- **Graceful Escalation**: Gateway 経由が常に動作、最適化は後から
 
 ## 設計判断（決定済み）
-- 実装言語: Rust（メモリ安全性のため）
-- 内部的にメッシュVPN技術（Nebula相当）を活用するが、外部にはNebulaの名前を露出しない
-- 社内メンバーはブラウザのみ、リモートは任意VPN経由
-- OpenResty(Nginx+Lua)がGateway兼Lighthouse
-- Podman CNIプラグインとしてコンテナにフラットIPを割り当て
-- C4モデルを意識した設計ドキュメント管理
-- 計画粒度: phase > stage > sub-stage
+
+- CNI Plugin 実装言語: Rust
+- Gateway: OpenResty (Nginx + Lua) on Windows
+- Container Runtime: Podman on WSL2
+- ドキュメント管理: C4 モデルベース
+- 計画粒度: Phase > Stage > Sub-stage
 
 ## 構成
-- docs/architecture/ : C4モデルベースの設計書
-- docs/phases/ : 開発計画
-- src/ : Rustソースコード
+
+```
+docs/
+├── architecture/
+│   ├── diagrams/          # PlantUML 図
+│   ├── design-notes/      # 設計判断メモ
+│   └── research/          # 技術調査（e4mc 等）
+└── phases/                # 開発計画
+src/                       # Rust ソースコード（Phase 2〜）
+```
 
 ## 現在のフェーズ
-Phase 1, Stage 1: CNIプラグインのスケルトン作成（これから着手）
+
+**Phase 1: Gateway 基盤**（設計中）
+
+- OpenResty を Windows 上で起動
+- WSL2 内サービスへ HTTP プロキシ
+- Forgejo にブラウザからアクセス可能に
+
+## Phase 概要
+
+| Phase | 内容 | 状態 |
+|-------|------|------|
+| Phase 1 | Gateway 基盤（NAT 地獄の解消）| 設計中 |
+| Phase 2 | CNI Plugin（コンテナ管理自動化）| 未着手 |
+| Phase 3 | マルチホスト（複数ホスト間通信）| 未着手 |
+| Phase 4 | 本番運用準備 | 未着手 |
 
 ## 技術的な前提
-- WSL2 (Ubuntu 24.04) 上で開発
-- Podman v4系（Netavarkがデフォルト）
-- CNIプラグインはstdin/stdout/環境変数でPodmanとやり取り
+
+- Windows 11 + WSL2 (Ubuntu 24.04)
+- Podman v4 系
+- OpenResty (Windows 版)
+
+## 参考調査
+
+- [e4mc 調査](docs/architecture/research/e4mc-analysis.md): NAT 越え技術の参考
+- [フォールバック戦略](docs/architecture/design-notes/fallback-strategy.md): Phase 3 で活用予定

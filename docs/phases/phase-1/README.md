@@ -1,119 +1,116 @@
-# Phase 1: CNI Plugin 実装
+# Phase 1: Gateway 基盤
 
 ## ゴール
-Rust製 CNI プラグインの全コンポーネントを実装し、コンテナ間でトンネル通信ができる状態を作る。
 
-## 対象コンポーネント（component.puml より）
+OpenResty を Windows 上の窓口として、社内メンバーがブラウザから WSL2 内サービスにアクセスできる状態を作る。
 
-```
-package "Flatnet CNI Plugin (Rust)" {
-  FlatnetCNI
-  NetworkNamespace
-  TunnelManager
-  IPAddressManager
-  LighthouseClient (モック実装)
-}
-```
+## スコープ
+
+**含まれるもの:**
+- OpenResty (Windows) のセットアップ
+- WSL2 内サービスへの HTTP プロキシ設定
+- Forgejo の動作確認
+
+**含まれないもの:**
+- CNI プラグイン → Phase 2
+- コンテナの自動登録 → Phase 2
+- マルチホスト対応 → Phase 3
 
 ## Phase 1 完了条件
-- [ ] Podman で起動した2つのコンテナが Flatnet トンネル経由で相互に通信できる
-- [ ] コンテナの起動・停止時に CNI プラグインが正しく動作し、リソースがリークしない
-- [ ] Forgejo + Runner が Flatnet 上で動作し、CI ジョブが実行できる
+
+- [ ] OpenResty が Windows 上で起動している
+- [ ] 社内 LAN のブラウザから Forgejo にアクセスできる
+- [ ] WSL2 の IP 変更時の対応手順が文書化されている
 
 ---
 
 ## Stages
 
-### Stage 1: FlatnetCNI スケルトン
+### Stage 1: OpenResty セットアップ
 
-**対象クラス:** `FlatnetCNI`
-
-**実装内容**
-- `add(container_id, netns)` → CNIResult
-- `del(container_id, netns)` → CNIResult
-- `check(container_id, netns)` → CNIResult
-- `read_config(stdin)` → FlatnetConfig
-- `write_result(stdout)`
+**概要**
+- Windows 用 OpenResty のインストール
+- 基本的な nginx.conf の設定
+- 起動確認
 
 **完了条件**
-- [ ] `cargo build --release` でビルド成功
-- [ ] CNI_COMMAND=ADD → 有効な CNI Result JSON を stdout に出力
-- [ ] CNI_COMMAND=DEL → exit 0
-- [ ] CNI_COMMAND=CHECK → exit 0
-- [ ] `podman run --network flatnet alpine echo hello` が成功
+- [ ] OpenResty が Windows 上で起動する
+- [ ] `http://localhost/` でデフォルトページが表示される
+- [ ] Windows Firewall で 80/443 ポートが開放されている
 
 ---
 
-### Stage 2: NetworkNamespace 操作
+### Stage 2: WSL2 プロキシ設定
 
-**対象クラス:** `NetworkNamespace`
-
-**実装内容**
-- `create_interface(netns_path)` → TunDevice
-- `assign_ip(device, ip)`
-- `setup_routes(device, routes)`
-- `teardown(netns_path)`
+**概要**
+- WSL2 の IP アドレス取得方法の確立
+- OpenResty から WSL2 へのプロキシ設定
+- Lua による動的ルーティング（オプション）
 
 **完了条件**
-- [ ] コンテナ内にネットワークインターフェースが作成される
-- [ ] 指定したサブネットから IP が割り当てられる
-- [ ] コンテナ内から `ip addr` で割り当てられた IP を確認できる
-- [ ] コンテナ停止時にインターフェースが正しくクリーンアップされる
+- [ ] WSL2 内で起動したサービスに OpenResty 経由でアクセスできる
+- [ ] `proxy_pass` 設定が動作する
+- [ ] WSL2 IP の取得・更新手順が確立されている
 
 ---
 
-### Stage 3: IPAddressManager 実装
+### Stage 3: Forgejo 統合
 
-**対象クラス:** `IPAddressManager`, `LighthouseClient`（モック）
-
-**実装内容**
-- `allocate_ip(container_id)` → FlatnetIP
-- `release_ip(container_id)`
-- `resolve_ip(container_id)` → FlatnetIP
-- `register_with_lighthouse(ip)` → モック実装（ローカルファイル or メモリ）
+**概要**
+- WSL2 内で Forgejo を Podman で起動
+- OpenResty から Forgejo へのプロキシ
+- 動作確認
 
 **完了条件**
-- [ ] コンテナ起動時に一意の Flatnet IP が割り当てられる
-- [ ] 複数コンテナで IP が重複しない
-- [ ] コンテナ停止時に IP が解放される
-- [ ] container_id から Flatnet IP を解決できる
+- [ ] Forgejo が WSL2 内で起動している
+- [ ] 社内 LAN のブラウザから Forgejo UI にアクセスできる
+- [ ] Git clone/push が動作する
 
 ---
 
-### Stage 4: TunnelManager 実装
+### Stage 4: ドキュメント整備
 
-**対象クラス:** `TunnelManager`
-
-**実装内容**
-- `create_tunnel(local_ip, remote_ip)` → Tunnel
-- `encrypt_packet(packet)` → EncryptedPacket
-- `decrypt_packet(packet)` → Packet
-- `close_tunnel()`
+**概要**
+- セットアップ手順書の作成
+- トラブルシューティングガイド
+- WSL2 IP 変更時の対応手順
 
 **完了条件**
-- [ ] コンテナ間でトンネルが確立される
-- [ ] パケットが暗号化されて送受信される
-- [ ] 2つのコンテナ間で ping が通る
-- [ ] TCP 通信ができる（nc でメッセージ送受信）
-
----
-
-### Stage 5: Forgejo 統合テスト
-
-**検証内容**
-- Forgejo + Runner を Flatnet CNI 上で起動
-- git push → CI 実行の一連のフローを検証
-
-**完了条件**
-- [ ] Forgejo が Flatnet 上で起動する
-- [ ] Forgejo Runner が Forgejo に接続し、オンライン状態になる
-- [ ] テストリポジトリに push すると、Forgejo Actions ワークフローが実行される
-- [ ] ワークフロー内で `echo "Hello from Flatnet"` が成功する
-- [ ] 動作検証手順書が作成されている
+- [ ] セットアップ手順書が完成
+- [ ] 別の環境で手順書通りに構築できることを確認
 
 ---
 
 ## 成果物
-- `flatnet-cni` バイナリ（Rust）
-- Podman用ネットワーク設定ファイル
-- Phase 1 動作検証手順書
+
+- OpenResty 設定ファイル一式
+- Forgejo 用 Podman 設定
+- セットアップ手順書
+
+## 技術メモ
+
+### WSL2 の IP アドレス問題
+
+WSL2 の IP は再起動時に変わる可能性がある：
+
+```bash
+# WSL2 内で IP 確認
+ip addr show eth0 | grep inet
+```
+
+対策案:
+1. 起動時スクリプトで nginx.conf を更新
+2. Lua で動的に解決
+3. localhost forwarding (実験的機能)
+
+### ネットワーク構成（Phase 1 完了時）
+
+```
+[社内 LAN]
+    │
+    ▼ HTTP (80/443)
+[Windows: OpenResty]
+    │
+    ▼ proxy_pass
+[WSL2: Forgejo Container]
+```
