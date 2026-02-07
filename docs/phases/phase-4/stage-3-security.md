@@ -237,6 +237,37 @@ server {
 - Let's Encrypt（外部公開時）
 - 自己署名証明書（開発環境のみ）
 
+**自己署名証明書の生成手順（開発用）:**
+
+```powershell
+# PowerShell で実行（管理者権限推奨）
+# 証明書格納ディレクトリの作成
+New-Item -ItemType Directory -Force -Path "F:\flatnet\config\ssl"
+
+# OpenSSL で自己署名証明書を生成（WSL2 経由）
+wsl openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout /mnt/f/flatnet/config/ssl/server.key \
+  -out /mnt/f/flatnet/config/ssl/server.crt \
+  -subj "/CN=flatnet.local/O=Flatnet/C=JP"
+```
+
+または WSL2 内で直接実行:
+
+```bash
+# 証明書ディレクトリの作成
+mkdir -p /mnt/f/flatnet/config/ssl
+
+# 自己署名証明書の生成
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout /mnt/f/flatnet/config/ssl/server.key \
+  -out /mnt/f/flatnet/config/ssl/server.crt \
+  -subj "/CN=flatnet.local/O=Flatnet/C=JP"
+
+# 権限設定
+chmod 600 /mnt/f/flatnet/config/ssl/server.key
+chmod 644 /mnt/f/flatnet/config/ssl/server.crt
+```
+
 **完了条件:**
 - [ ] TLS 証明書が設定されている
 - [ ] HTTPS でアクセスできる

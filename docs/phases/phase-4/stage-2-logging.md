@@ -129,8 +129,8 @@ scrape_configs:
           job: gateway
           component: openresty
           # Windows のパスを WSL2 からマウント
-          # 例: /mnt/c/openresty/logs/*.log
-          __path__: /mnt/c/openresty/logs/*.log
+          # 例: /mnt/f/flatnet/logs/*.log
+          __path__: /mnt/f/flatnet/logs/*.log
 
   # CNI Plugin logs (WSL2 ネイティブ)
   - job_name: cni-plugin
@@ -165,10 +165,10 @@ scrape_configs:
 **注意: Windows ログへのアクセス**
 
 WSL2 から Windows 上のログファイルを読み取るには:
-1. `/mnt/c/` 経由でアクセス（デフォルトでマウント済み）
+1. `/mnt/f/` 経由でアクセス（デフォルトでマウント済み）
 2. または Windows 側で Promtail を起動し、Loki に送信
 
-推奨: WSL2 の Promtail で `/mnt/c/openresty/logs/` を監視
+推奨: WSL2 の Promtail で `/mnt/f/flatnet/logs/` を監視
 
 **完了条件:**
 - [ ] Promtail コンテナが起動している
@@ -233,7 +233,7 @@ Windows ではネイティブな logrotate がないため、以下の方法を�
 1. PowerShell スクリプトによる定期削除（タスクスケジューラ）
 ```powershell
 # rotate-logs.ps1
-$logPath = "C:\openresty\logs"
+$logPath = "F:\flatnet\logs"
 $retentionDays = 14
 
 # 古いログファイルを削除
@@ -247,7 +247,7 @@ Copy-Item "$logPath\access.log" "$logPath\access.log.$date"
 Copy-Item "$logPath\error.log" "$logPath\error.log.$date"
 
 # nginx にログ再オープンを指示
-& C:\openresty\nginx.exe -s reopen
+& F:\flatnet\openresty\nginx.exe -s reopen
 ```
 
 2. OpenResty の設定でサイズ制限を設定（推奨）
@@ -323,7 +323,7 @@ http {
 
 ## 成果物
 
-- `logging/docker-compose.yml` - ログスタック構成（または monitoring/ に統合）
+- `logging/podman-compose.yml` - ログスタック構成（または monitoring/ に統合）
 - `logging/loki/loki-config.yml` - Loki 設定
 - `logging/promtail/promtail-config.yml` - Promtail 設定
 - `logging/logrotate/` - ログローテーション設定

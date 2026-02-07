@@ -155,11 +155,17 @@ YYYY/MM/DD HH:MM
 - `wrk` または `hey` を使用
 
 ```bash
-# wrk インストール (Ubuntu)
-sudo apt install wrk
+# wrk インストール (Ubuntu - ソースからビルド)
+sudo apt install build-essential libssl-dev git
+git clone https://github.com/wg/wrk.git
+cd wrk && make && sudo cp wrk /usr/local/bin/
 
-# hey インストール
+# hey インストール (Go がインストール済みの場合)
 go install github.com/rakyll/hey@latest
+
+# または hey をバイナリで取得
+wget https://hey-release.s3.us-east-2.amazonaws.com/hey_linux_amd64
+chmod +x hey_linux_amd64 && sudo mv hey_linux_amd64 /usr/local/bin/hey
 ```
 
 **負荷テストシナリオ:**

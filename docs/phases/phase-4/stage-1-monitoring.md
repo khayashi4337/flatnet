@@ -245,14 +245,31 @@ scrape_configs:
   - job_name: 'gateway'
     static_configs:
       # WSL2 から Windows ホストへのアクセス
-      # host.docker.internal または $(hostname).local を使用
-      - targets: ['host.docker.internal:9145']
+      # Podman では host.containers.internal を使用
+      - targets: ['host.containers.internal:9145']
 ```
 
 WSL2 から Windows IP を取得する方法:
 ```bash
 # /etc/resolv.conf の nameserver が Windows IP
 cat /etc/resolv.conf | grep nameserver | awk '{print $2}'
+```
+
+## 起動手順
+
+```bash
+# 監視スタックの起動
+cd /path/to/monitoring
+podman-compose up -d
+
+# 起動確認
+podman-compose ps
+
+# ログ確認
+podman-compose logs -f prometheus
+
+# 停止
+podman-compose down
 ```
 
 ## 完了条件

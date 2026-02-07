@@ -59,20 +59,24 @@
 
 **起動・停止手順:**
 
-```bash
-# Gateway 起動 (Windows)
-cd C:\openresty
-nginx.exe
+Gateway (Windows PowerShell):
+```powershell
+# Gateway 起動
+cd F:\flatnet\openresty
+.\nginx.exe
 
-# Gateway 停止 (Windows)
-nginx.exe -s stop
+# Gateway 停止
+.\nginx.exe -s stop
 
 # Gateway 設定リロード
-nginx.exe -s reload
+.\nginx.exe -s reload
+```
 
+監視スタック (WSL2):
+```bash
 # CNI Plugin は Podman 起動時に自動で呼び出される
 
-# 監視スタック起動 (WSL2)
+# 監視スタック起動
 cd /path/to/monitoring
 podman-compose up -d
 
@@ -82,18 +86,19 @@ podman-compose down
 
 **ログ確認手順:**
 
-```bash
-# Gateway ログ (Windows)
-Get-Content C:\openresty\logs\error.log -Tail 100
+Gateway ログ (Windows PowerShell):
+```powershell
+# エラーログの末尾100行
+Get-Content F:\flatnet\openresty\logs\error.log -Tail 100
 
-# Gateway ログ (PowerShell でリアルタイム)
-Get-Content C:\openresty\logs\access.log -Wait
-
-# Grafana でログ検索
-# 1. Explore を開く
-# 2. Loki データソースを選択
-# 3. LogQL クエリを入力
+# アクセスログをリアルタイム監視
+Get-Content F:\flatnet\openresty\logs\access.log -Wait
 ```
+
+Grafana でログ検索:
+1. Explore を開く
+2. Loki データソースを選択
+3. LogQL クエリを入力（例: `{job="gateway"} |= "error"`）
 
 **完了条件:**
 - [ ] 日常運用チェックリストが作成されている
@@ -128,7 +133,7 @@ Get-Content C:\openresty\logs\access.log -Wait
    ```
 3. エラーログを確認
    ```powershell
-   Get-Content C:\openresty\logs\error.log -Tail 50
+   Get-Content F:\flatnet\openresty\logs\error.log -Tail 50
    ```
 
 **対処:**
@@ -226,7 +231,7 @@ Get-Content C:\openresty\logs\access.log -Wait
    ```
 2. nginx.conf の proxy_pass 設定を確認
    ```powershell
-   Get-Content C:\openresty\conf\nginx.conf | Select-String "proxy_pass"
+   Get-Content F:\flatnet\openresty\conf\nginx.conf | Select-String "proxy_pass"
    ```
 
 **対処:**
@@ -237,7 +242,7 @@ Write-Host "WSL2 IP: $wslIp"
 
 # 2. nginx.conf を更新（手動または自動スクリプト）
 # 3. 設定リロード
-cd C:\openresty
+cd F:\flatnet\openresty
 .\nginx.exe -s reload
 ```
 
@@ -273,7 +278,7 @@ cd C:\openresty
 
 | 対象 | 場所 | 頻度 | 保持期間 |
 |------|------|------|---------|
-| Gateway 設定 | C:\openresty\conf\ | 変更時 | 世代管理 |
+| Gateway 設定 | F:\flatnet\openresty\conf\ | 変更時 | 世代管理 |
 | CNI Plugin 設定 | /etc/cni/net.d/ | 変更時 | 世代管理 |
 | Prometheus データ | /var/lib/prometheus/ | 日次 | 7日 |
 | Grafana ダッシュボード | Grafana API 経由 | 日次 | 7日 |
@@ -384,19 +389,19 @@ echo "Backup completed: $BACKUP_DIR"
 
 ```powershell
 # 1. バックアップ
-Copy-Item -Recurse C:\openresty\conf C:\openresty\conf.bak
+Copy-Item -Recurse F:\flatnet\openresty\conf F:\flatnet\openresty\conf.bak
 
 # 2. 新しい OpenResty をダウンロード・展開
 # 3. 設定ファイルをコピー
-Copy-Item -Recurse C:\openresty\conf.bak\* C:\openresty-new\conf\
+Copy-Item -Recurse F:\flatnet\openresty\conf.bak\* F:\flatnet\openresty-new\conf\
 
 # 4. 設定テスト
-cd C:\openresty-new
+cd F:\flatnet\openresty-new
 .\nginx.exe -t
 
 # 5. 切り替え
 .\nginx.exe -s stop  # 旧バージョン
-cd C:\openresty-new
+cd F:\flatnet\openresty-new
 .\nginx.exe
 
 # 6. 動作確認
@@ -458,6 +463,6 @@ cp /opt/cni/bin/flatnet-cni.bak /opt/cni/bin/flatnet-cni
 
 ### 関連ドキュメント
 
-- [監視ダッシュボードガイド](../phase-4/stage-1-monitoring.md)
-- [ログ検索ガイド](../phase-4/stage-2-logging.md)
-- [セキュリティポリシー](../phase-4/stage-3-security.md)
+- [監視ダッシュボードガイド](./stage-1-monitoring.md)
+- [ログ検索ガイド](./stage-2-logging.md)
+- [セキュリティポリシー](./stage-3-security.md)
