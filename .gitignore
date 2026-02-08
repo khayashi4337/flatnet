@@ -1,6 +1,6 @@
 # Rust
-/target/
-Cargo.lock
+target/
+# Note: Cargo.lock is committed for binary crates (flatnet-cni)
 
 # Editor
 .vscode/

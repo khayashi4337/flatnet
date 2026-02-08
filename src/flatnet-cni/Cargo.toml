@@ -1,0 +1,40 @@
+[package]
+name = "flatnet-cni"
+version = "0.1.0"
+edition = "2021"
+authors = ["Flatnet Developers"]
+description = "CNI plugin for Flatnet - bridging containers across NAT boundaries"
+license = "MIT"
+# repository = "https://github.com/your-org/flatnet"  # TODO: Set when published
+keywords = ["cni", "container", "networking", "podman"]
+categories = ["network-programming"]
+
+[dependencies]
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+thiserror = "1"
+
+# Linux-specific dependencies (uncomment when implementing network operations)
+# nix = { version = "0.27", features = ["net", "sched"] }
+# rtnetlink = "0.13"
+# tokio = { version = "1", features = ["rt", "macros"] }
+# ipnetwork = "0.20"
+# fs2 = "0.4"
+
+[dev-dependencies]
+# Testing utilities (to be added as needed)
+
+[[bin]]
+name = "flatnet"
+path = "src/main.rs"
+
+[profile.release]
+# Optimize for size - CNI plugins should be small
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
