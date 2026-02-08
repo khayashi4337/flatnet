@@ -2,6 +2,8 @@
 
 最小限の手順で Phase 1（Gateway 基盤）を動作させる。
 
+> **セキュリティ注意:** この手順は HTTP（非暗号化）を使用します。認証情報がネットワーク上を平文で流れるため、社内 LAN など信頼できるネットワーク環境でのみ使用してください。
+
 ## 前提
 
 - Windows 10/11 + WSL2 (Ubuntu 24.04)
@@ -31,6 +33,9 @@ podman run -d --name forgejo -p 3000:3000 \
 ```
 
 ### 3. nginx.conf 作成
+
+> **注意:** この手順では簡略化した単一ファイルの設定を使用します。
+> 本格的な設定は `examples/openresty/nginx.conf` または `config/openresty/nginx-forgejo.conf` を参照してください。
 
 WSL2 の IP を確認:
 
@@ -98,6 +103,8 @@ cd F:\flatnet\openresty
 ```
 
 ブラウザで `http://localhost/` にアクセスして Forgejo の初期設定を完了。
+
+> **重要:** 初期設定で最初に作成するアカウントが管理者になります。LAN 公開前に管理者アカウントを作成してください。
 
 ## 次のステップ
 
