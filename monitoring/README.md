@@ -1,8 +1,8 @@
 # Flatnet Monitoring Stack
 
-Phase 4, Stage 1: Monitoring Infrastructure
+Phase 4, Stage 1-2: Monitoring and Logging Infrastructure
 
-This directory contains the monitoring stack for Flatnet, including Prometheus, Grafana, Alertmanager, and Node Exporter.
+This directory contains the monitoring stack for Flatnet, including Prometheus, Grafana, Alertmanager, Node Exporter, Loki, and Promtail.
 
 ## Components
 
@@ -13,6 +13,8 @@ This directory contains the monitoring stack for Flatnet, including Prometheus, 
 | Alertmanager | 9093 | Alert routing and notification |
 | Node Exporter | 9100 | Host system metrics |
 | Gateway Metrics | 9145 | OpenResty Gateway metrics |
+| Loki | 3100 | Log aggregation |
+| Promtail | 9080 | Log shipping agent |
 
 ## Security Notice
 
@@ -71,13 +73,22 @@ monitoring/
 │   └── alertmanager.yml        # Alertmanager configuration
 ├── grafana/
 │   ├── provisioning/
-│   │   ├── datasources/        # Prometheus data source
+│   │   ├── datasources/        # Prometheus and Loki data sources
 │   │   └── dashboards/         # Dashboard provisioning
 │   └── dashboards/
 │       ├── system-overview.json    # System overview
 │       ├── gateway-detail.json     # Gateway details
-│       └── cni-detail.json         # CNI Plugin details
+│       ├── cni-detail.json         # CNI Plugin details
+│       └── logs.json               # Log exploration dashboard
 └── README.md
+
+logging/
+├── loki/
+│   └── loki-config.yml         # Loki configuration
+├── promtail/
+│   └── promtail-config.yml     # Promtail configuration
+└── logrotate/
+    └── rotate-logs.ps1         # Windows log rotation script
 ```
 
 ## Dashboards
@@ -98,6 +109,13 @@ monitoring/
 - IP allocation status
 - Operation success/failure rate
 - Gateway registration metrics
+
+### Logs
+- Log stream viewer with filtering
+- Error log count by period
+- Log volume by component
+- Log volume by level
+- Recent error logs panel
 
 ## Alert Rules
 
@@ -186,6 +204,8 @@ Monitoring data is stored in Podman volumes:
 - `prometheus_data` - Prometheus TSDB (15 days retention)
 - `grafana_data` - Grafana dashboards and settings
 - `alertmanager_data` - Alertmanager state
+- `loki_data` - Loki log storage (14 days retention)
+- `promtail_positions` - Promtail file positions
 
 To remove all data:
 ```bash
@@ -212,9 +232,82 @@ To remove all data:
 2. Verify Alertmanager is running: `curl http://localhost:9093/-/ready`
 3. Check Alertmanager configuration in Prometheus
 
+## Logging
+
+### Log Sources
+
+Promtail collects logs from three sources:
+
+1. **Gateway (OpenResty)**: Logs from Windows accessed via `/mnt/f/flatnet/logs/`
+2. **CNI Plugin**: Logs from `/var/log/flatnet/`
+3. **Containers**: Podman container logs from `/var/lib/containers/storage/overlay-containers/`
+
+### LogQL Query Examples
+
+```logql
+# Gateway error logs
+{job="gateway"} |= "error"
+
+# Specific container logs
+{job="containers"} | json | line_format "{{.log}}"
+
+# Error count in last hour
+count_over_time({job=~".+"} |= "error" [1h])
+
+# Response time > 1 second (gateway)
+{job="gateway"} | regexp `request_time=(?P<rt>\d+\.\d+)` | rt > 1
+```
+
+### Windows Log Rotation
+
+Run the PowerShell script daily using Windows Task Scheduler:
+
+```powershell
+# Manual run
+F:\flatnet\logging\logrotate\rotate-logs.ps1
+
+# With custom settings
+.\rotate-logs.ps1 -RetentionDays 7 -LogPath "D:\flatnet\logs"
+```
+
+**Task Scheduler Setup:**
+1. Open Task Scheduler
+2. Create Basic Task
+3. Trigger: Daily at midnight
+4. Action: Start a program
+   - Program: `powershell.exe`
+   - Arguments: `-ExecutionPolicy Bypass -File F:\flatnet\logging\logrotate\rotate-logs.ps1`
+
+### Retention Policy
+
+| Log Type | Retention | Rotation |
+|----------|-----------|----------|
+| Gateway access logs | 14 days | Daily |
+| Gateway error logs | 14 days | Daily |
+| CNI Plugin logs | 14 days | Daily |
+| Container logs | 14 days | Size-based (Loki) |
+
+### Troubleshooting Logs
+
+**Logs not appearing in Loki:**
+1. Check Promtail logs: `podman logs flatnet-promtail`
+2. Verify file permissions on log directories
+3. Check the label configuration in promtail-config.yml
+4. Ensure log paths are correctly mounted
+
+**Loki memory issues:**
+1. Reduce `chunk_idle_period` in loki-config.yml
+2. Decrease `max_look_back_period`
+3. Shorten retention period
+
+**Promtail not starting:**
+1. Verify Loki is healthy: `curl http://localhost:3100/ready`
+2. Check volume mounts are accessible
+3. Review promtail-config.yml for syntax errors
+
 ## Requirements
 
 - Podman 4.x
 - podman-compose (`pip install podman-compose`)
-- Approximately 2GB RAM for all services
-- 10GB disk space for Prometheus data (2 weeks retention)
+- Approximately 2.5GB RAM for all services (including Loki/Promtail)
+- 30GB disk space for Prometheus and Loki data (2 weeks retention)
