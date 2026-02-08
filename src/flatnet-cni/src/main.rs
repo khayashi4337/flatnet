@@ -2,12 +2,14 @@
 //!
 //! A CNI plugin that bridges containers across NAT boundaries.
 //! Implements CNI Spec 1.0.0.
+//! Supports multihost deployments with Gateway-based container discovery.
 
 mod bridge;
 mod config;
 mod error;
 mod ipam;
 mod netns;
+mod registry;
 mod result;
 mod veth;
 
@@ -121,17 +123,30 @@ fn cmd_add(input: &str) -> Result<(), CniError> {
         )
     })?;
 
+    // Get multihost configuration
+    let host_id = config.host_id.or_else(|| {
+        config.ipam.as_ref().and_then(|ipam| ipam.host_id)
+    });
+
+    let is_multihost = host_id.is_some();
+
     eprintln!(
-        "flatnet ADD: container={}, netns={}, ifname={}",
-        container_id, netns, ifname
+        "flatnet ADD: container={}, netns={}, ifname={}, multihost={}, host_id={:?}",
+        container_id, netns, ifname, is_multihost, host_id
     );
 
     // Get configuration values
     let bridge_name = config.bridge_name();
     let mtu = config.mtu_value();
 
-    // Parse gateway IP from config or use default
-    let gateway_ip: Ipv4Addr = if let Some(ref ipam_config) = config.ipam {
+    // Determine gateway IP based on mode
+    let gateway_ip: Ipv4Addr = if is_multihost {
+        // Multihost mode: gateway is 10.100.<host-id>.1
+        let hid = host_id.unwrap_or(1);
+        format!("10.100.{}.1", hid)
+            .parse()
+            .expect("multihost gateway IP is invalid")
+    } else if let Some(ref ipam_config) = config.ipam {
         ipam_config
             .gateway
             .as_deref()
@@ -150,8 +165,8 @@ fn cmd_add(input: &str) -> Result<(), CniError> {
     // Step 1: Ensure bridge exists
     let _bridge_index = bridge::ensure_bridge(bridge_name, gateway_ip, bridge::DEFAULT_PREFIX_LEN)?;
 
-    // Step 2: Allocate IP address
-    let allocation = ipam::allocate(&container_id)?;
+    // Step 2: Allocate IP address (with host ID for multihost)
+    let allocation = ipam::allocate_with_host_id(&container_id, host_id)?;
 
     // Step 3: Create veth pair
     let veth_pair = veth::create_veth_pair(&container_id, &netns, &ifname, mtu)?;
@@ -169,6 +184,16 @@ fn cmd_add(input: &str) -> Result<(), CniError> {
         )
     })?;
 
+    // Step 6: Register container with Gateway (if registry enabled)
+    if config.is_registry_enabled() {
+        let container_info = registry::ContainerInfo::new(
+            container_id.clone(),
+            allocation.ip.to_string(),
+            allocation.host_id,
+        );
+        registry::try_register(config.registry_endpoints(), &container_info);
+    }
+
     // Build the result
     let ip_with_prefix = format!("{}/{}", allocation.ip, allocation.prefix_len);
     let gateway_str = allocation.gateway.to_string();
@@ -183,8 +208,8 @@ fn cmd_add(input: &str) -> Result<(), CniError> {
         .with_route("0.0.0.0/0".to_string(), Some(gateway_str.clone()));
 
     eprintln!(
-        "flatnet ADD: success, ip={}, gateway={}",
-        ip_with_prefix, gateway_str
+        "flatnet ADD: success, ip={}, gateway={}, host_id={}",
+        ip_with_prefix, gateway_str, allocation.host_id
     );
 
     // Output result to stdout
@@ -201,7 +226,7 @@ fn cmd_add(input: &str) -> Result<(), CniError> {
 
 /// Handle DEL command - remove network interface
 fn cmd_del(input: &str) -> Result<(), CniError> {
-    let _config: NetworkConfig = serde_json::from_str(input).map_err(|e| {
+    let config: NetworkConfig = serde_json::from_str(input).map_err(|e| {
         CniError::new(CniErrorCode::DecodingFailure, "failed to parse network config")
             .with_details(&e.to_string())
     })?;
@@ -221,12 +246,18 @@ fn cmd_del(input: &str) -> Result<(), CniError> {
         return Ok(());
     }
 
-    // Step 1: Delete veth pair (if exists)
+    // Step 1: Deregister container from Gateway (if registry enabled)
+    // Do this first while we still have network access
+    if config.is_registry_enabled() {
+        registry::try_deregister(config.registry_endpoints(), &container_id);
+    }
+
+    // Step 2: Delete veth pair (if exists)
     // Deleting the host side automatically deletes the container side
     let host_ifname = veth::generate_host_ifname(&container_id);
     veth::delete_veth(&host_ifname)?;
 
-    // Step 2: Release IP address
+    // Step 3: Release IP address
     ipam::release(&container_id)?;
 
     eprintln!("flatnet DEL: cleanup complete");

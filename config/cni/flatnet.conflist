@@ -1,0 +1,32 @@
+{
+  "cniVersion": "1.0.0",
+  "name": "flatnet",
+  "plugins": [
+    {
+      "type": "flatnet",
+      "bridge": "flatnet-br0",
+      "mtu": 1500,
+      "ipMasq": true,
+      "hostId": 1,
+      "registryEndpoints": [
+        "http://10.100.1.1:8080/api/containers"
+      ],
+      "registryEnabled": true,
+      "ipam": {
+        "type": "flatnet-ipam",
+        "hostId": 1,
+        "subnet": "10.100.1.0/24",
+        "gateway": "10.100.1.1",
+        "routes": [
+          {"dst": "0.0.0.0/0"},
+          {"dst": "10.100.0.0/16", "gw": "10.100.1.1"}
+        ]
+      },
+      "dns": {
+        "nameservers": ["8.8.8.8", "8.8.4.4"],
+        "domain": "flatnet.local",
+        "search": ["flatnet.local"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "_comment": "Flatnet CNI Configuration for Multihost Deployment",
+  "_instructions": [
+    "1. Copy this file to /etc/cni/net.d/flatnet.conflist",
+    "2. Update 'hostId' to match this host's unique ID (1-254)",
+    "3. Update 'registryEndpoints' with Gateway API URLs",
+    "4. Update 'subnet' and 'gateway' to match host ID",
+    "5. Ensure Nebula tunnel is established before using"
+  ],
+
+  "cniVersion": "1.0.0",
+  "name": "flatnet",
+  "plugins": [
+    {
+      "type": "flatnet",
+
+      "_comment_bridge": "Bridge name and MTU (should be same on all hosts)",
+      "bridge": "flatnet-br0",
+      "mtu": 1500,
+
+      "_comment_masq": "Enable IP masquerading for outbound traffic",
+      "ipMasq": true,
+
+      "_comment_multihost": "Multihost configuration",
+      "hostId": 1,
+
+      "_comment_registry": "Registry endpoints for container discovery",
+      "_comment_registry_note": "Add all Gateway APIs in your cluster",
+      "registryEndpoints": [
+        "http://10.100.1.1:8080/api/containers",
+        "http://10.100.2.1:8080/api/containers",
+        "http://10.100.3.1:8080/api/containers"
+      ],
+      "registryEnabled": true,
+
+      "_comment_ipam": "IP Address Management configuration",
+      "ipam": {
+        "type": "flatnet-ipam",
+
+        "_comment_hostId": "Must match top-level hostId",
+        "hostId": 1,
+
+        "_comment_subnet": "Format: 10.100.<hostId>.0/24",
+        "subnet": "10.100.1.0/24",
+
+        "_comment_gateway": "Format: 10.100.<hostId>.1",
+        "gateway": "10.100.1.1",
+
+        "_comment_routes": "Routes for container traffic",
+        "routes": [
+          {
+            "_comment": "Default route via local gateway",
+            "dst": "0.0.0.0/0"
+          },
+          {
+            "_comment": "Route to entire flatnet supernet",
+            "dst": "10.100.0.0/16",
+            "gw": "10.100.1.1"
+          }
+        ]
+      },
+
+      "_comment_dns": "DNS configuration for containers",
+      "dns": {
+        "nameservers": ["8.8.8.8", "8.8.4.4"],
+        "domain": "flatnet.local",
+        "search": ["flatnet.local", "internal.local"]
+      }
+    }
+  ]
+}
