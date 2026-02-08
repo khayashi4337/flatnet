@@ -152,14 +152,15 @@ flatnet doctor --json | jq '.summary.failed'
 
 デプロイ前のヘルスチェックや、デプロイ後の検証に便利です。
 
-## 今後の予定
+## 実装済みの機能
 
-Flatnet プロジェクトは現在も開発中です。
+Flatnet プロジェクトは全フェーズの開発が完了しています。
 
-- **Phase 1（完了）**: Gateway 基盤 - NAT 越えの基本機能
-- **Phase 2（進行中）**: CNI Plugin - コンテナの自動 IP 割り当て
-- **Phase 3（予定）**: マルチホスト - 複数の WSL2 ホスト間通信
-- **Phase 4（予定）**: 本番運用準備
+- **Phase 1**: Gateway 基盤 - NAT 越えの基本機能
+- **Phase 2**: CNI Plugin - コンテナの自動 IP 割り当て
+- **Phase 3**: マルチホスト - 複数の WSL2 ホスト間通信
+- **Phase 4**: 本番運用準備 - 監視・ログ・セキュリティ
+- **Phase 5**: CLI Tool - システム管理ツール
 
 ## まとめ
 
