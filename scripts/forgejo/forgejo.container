@@ -1,0 +1,17 @@
+[Unit]
+Description=Forgejo Git Service
+After=local-fs.target
+
+[Container]
+ContainerName=forgejo
+Image=codeberg.org/forgejo/forgejo:9
+PublishPort=3000:3000
+Volume=%h/forgejo/data:/data:Z
+Volume=%h/forgejo/config:/etc/gitea:Z
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target
