@@ -1,0 +1,72 @@
+# Nebula Host Node Configuration Template
+# Flatnet Phase 3 - Stage 1
+#
+# このテンプレートを F:\flatnet\config\nebula\config.yaml にデプロイして使用
+# (Lighthouse と同一ホストの場合は lighthouse.yaml.template を使用)
+#
+# プレースホルダー:
+#   ${FLATNET_BASE}     - Flatnet ベースパス (例: F:/flatnet)
+#   ${HOST_NAME}        - ホスト名 (例: host-a)
+#   ${LIGHTHOUSE_IP}    - Lighthouse の Flatnet IP (例: 10.100.0.1)
+#   ${LIGHTHOUSE_ADDR}  - Lighthouse の物理 IP:Port (例: 192.168.1.10:4242)
+#   ${LISTEN_PORT}      - リッスンポート (デフォルト: 4242)
+#
+# 使用方法 (PowerShell):
+#   $template = Get-Content host.yaml.template -Raw
+#   $config = $template -replace '\$\{FLATNET_BASE\}', 'F:/flatnet'
+#   $config = $config -replace '\$\{HOST_NAME\}', 'host-a'
+#   $config = $config -replace '\$\{LIGHTHOUSE_IP\}', '10.100.0.1'
+#   $config = $config -replace '\$\{LIGHTHOUSE_ADDR\}', '192.168.1.10:4242'
+#   $config = $config -replace '\$\{LISTEN_PORT\}', '4242'
+#   Set-Content config.yaml $config
+
+pki:
+  ca: ${FLATNET_BASE}/config/nebula/ca.crt
+  cert: ${FLATNET_BASE}/config/nebula/${HOST_NAME}.crt
+  key: ${FLATNET_BASE}/config/nebula/${HOST_NAME}.key
+
+# Lighthouse への接続設定
+static_host_map:
+  "${LIGHTHOUSE_IP}": ["${LIGHTHOUSE_ADDR}"]
+
+lighthouse:
+  am_lighthouse: false
+  hosts:
+    - "${LIGHTHOUSE_IP}"
+
+listen:
+  host: 0.0.0.0
+  port: ${LISTEN_PORT}
+
+logging:
+  level: info
+  format: text
+
+# TUN デバイス設定
+tun:
+  dev: nebula1
+  drop_local_broadcast: false
+  drop_multicast: false
+
+# ファイアウォール設定
+firewall:
+  # アウトバウンド: 全て許可
+  outbound:
+    - port: any
+      proto: any
+      host: any
+
+  # インバウンド
+  inbound:
+    # ICMP (ping) を許可
+    - port: any
+      proto: icmp
+      host: any
+    # 同じグループからの通信を許可
+    - port: any
+      proto: any
+      group: flatnet
+    # Gateway グループからの通信を許可
+    - port: any
+      proto: any
+      group: gateway

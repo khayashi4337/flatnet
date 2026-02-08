@@ -1,0 +1,60 @@
+# Nebula Lighthouse Configuration Template
+# Flatnet Phase 3 - Stage 1
+#
+# このテンプレートを F:\flatnet\config\nebula\config.yaml にデプロイして使用
+#
+# プレースホルダー:
+#   ${FLATNET_BASE}  - Flatnet ベースパス (例: F:/flatnet)
+#   ${LISTEN_PORT}   - リッスンポート (デフォルト: 4242)
+#
+# 使用方法 (PowerShell):
+#   $template = Get-Content lighthouse.yaml.template -Raw
+#   $config = $template -replace '\$\{FLATNET_BASE\}', 'F:/flatnet'
+#   $config = $config -replace '\$\{LISTEN_PORT\}', '4242'
+#   Set-Content config.yaml $config
+#
+# 注意: setup-lighthouse.ps1 を使用する場合、テンプレートは不要です。
+#       スクリプトが自動で設定ファイルを生成します。
+
+pki:
+  ca: ${FLATNET_BASE}/config/nebula/ca.crt
+  cert: ${FLATNET_BASE}/config/nebula/lighthouse.crt
+  key: ${FLATNET_BASE}/config/nebula/lighthouse.key
+
+lighthouse:
+  am_lighthouse: true
+
+listen:
+  host: 0.0.0.0
+  port: ${LISTEN_PORT}
+
+logging:
+  level: info
+  format: text
+  # ログファイル出力は NSSM で設定
+
+# TUN デバイス設定
+tun:
+  dev: nebula1
+  drop_local_broadcast: false
+  drop_multicast: false
+
+# ファイアウォール設定
+# Lighthouse は全ノードからの接続を受け付ける
+firewall:
+  # アウトバウンド: 全て許可
+  outbound:
+    - port: any
+      proto: any
+      host: any
+
+  # インバウンド
+  inbound:
+    # ICMP (ping) を許可
+    - port: any
+      proto: icmp
+      host: any
+    # 全グループからの通信を許可
+    - port: any
+      proto: any
+      group: any
