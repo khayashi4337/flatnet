@@ -35,6 +35,9 @@ tabled = "0.14"
 anyhow = "1"
 thiserror = "1"
 
+# Date/time
+chrono = "0.4"
+
 # Configuration
 dirs = "5"
 toml = "0.8"
