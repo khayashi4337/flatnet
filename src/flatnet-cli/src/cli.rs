@@ -34,6 +34,10 @@ pub enum Commands {
     /// Show logs from components or containers
     #[command(about = "Show logs from Flatnet components or containers")]
     Logs(LogsArgs),
+
+    /// Upgrade CLI to latest version
+    #[command(about = "Upgrade flatnet CLI to latest version")]
+    Upgrade(UpgradeArgs),
 }
 
 /// Arguments for the status command
@@ -114,4 +118,16 @@ pub struct LogsArgs {
     /// Output in JSON format
     #[arg(long, help = "Output in JSON format")]
     pub json: bool,
+}
+
+/// Arguments for the upgrade command
+#[derive(Parser, Debug)]
+pub struct UpgradeArgs {
+    /// Check for updates without installing
+    #[arg(long, help = "Check for updates without installing")]
+    pub check: bool,
+
+    /// Upgrade to a specific version
+    #[arg(long, value_name = "VERSION", help = "Upgrade to a specific version (e.g., 0.2.0)")]
+    pub version: Option<String>,
 }

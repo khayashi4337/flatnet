@@ -31,6 +31,10 @@ async fn main() -> Result<ExitCode> {
             commands::logs::run(args).await?;
             ExitCode::SUCCESS
         }
+        Commands::Upgrade(args) => {
+            commands::upgrade::run(args).await?;
+            ExitCode::SUCCESS
+        }
     };
 
     Ok(exit_code)
