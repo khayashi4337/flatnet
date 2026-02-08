@@ -17,12 +17,14 @@ serde_json = "1"
 # Error handling
 thiserror = "1"
 
-# Linux-specific dependencies (uncomment when implementing network operations)
-# nix = { version = "0.27", features = ["net", "sched"] }
-# rtnetlink = "0.13"
-# tokio = { version = "1", features = ["rt", "macros"] }
-# ipnetwork = "0.20"
-# fs2 = "0.4"
+# Linux-specific dependencies
+nix = { version = "0.27", features = ["net", "sched", "fs"] }
+rtnetlink = "0.14"
+tokio = { version = "1", features = ["rt", "macros", "sync"] }
+ipnetwork = "0.20"
+fs2 = "0.4"
+netlink-packet-route = "0.19"
+futures = "0.3"
 
 [dev-dependencies]
 # Testing utilities (to be added as needed)

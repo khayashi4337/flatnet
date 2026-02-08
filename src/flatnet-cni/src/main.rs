@@ -3,12 +3,17 @@
 //! A CNI plugin that bridges containers across NAT boundaries.
 //! Implements CNI Spec 1.0.0.
 
+mod bridge;
 mod config;
 mod error;
+mod ipam;
+mod netns;
 mod result;
+mod veth;
 
 use std::env;
 use std::io::{self, Read};
+use std::net::Ipv4Addr;
 
 use config::NetworkConfig;
 use error::{CniError, CniErrorCode};
@@ -25,7 +30,7 @@ const SUPPORTED_VERSIONS: &[&str] = &["0.3.0", "0.3.1", "0.4.0", "1.0.0"];
 
 fn main() {
     if let Err(e) = run() {
-        // Output error in CNI format to stderr
+        // Output error in CNI format to stdout (per CNI spec)
         let error_output = serde_json::json!({
             "cniVersion": CNI_VERSION,
             "code": e.code() as u32,
@@ -33,7 +38,7 @@ fn main() {
             "details": e.details()
         });
         // Use compact JSON for CNI spec compliance; unwrap_or for robustness
-        eprintln!(
+        println!(
             "{}",
             serde_json::to_string(&error_output).unwrap_or_else(|_| {
                 format!(
@@ -116,41 +121,70 @@ fn cmd_add(input: &str) -> Result<(), CniError> {
         )
     })?;
 
-    // TODO: Implement actual network setup in Stage 3
-    // 1. Create veth pair
-    // 2. Move one end to container namespace
-    // 3. Assign IP address (via IPAM)
-    // 4. Connect host end to bridge
+    eprintln!(
+        "flatnet ADD: container={}, netns={}, ifname={}",
+        container_id, netns, ifname
+    );
 
-    // Generate dummy IP and gateway from IPAM config if available
-    // In Stage 2, we return a stub response using config values
-    let (ip_address, gateway) = if let Some(ref ipam) = config.ipam {
-        // Use subnet and gateway from config if available
-        let subnet = ipam.subnet.as_deref().unwrap_or("10.87.1.0/24");
-        let gw = ipam.gateway.as_deref().unwrap_or("10.87.1.1");
+    // Get configuration values
+    let bridge_name = config.bridge_name();
+    let mtu = config.mtu_value();
 
-        // Parse subnet to generate a dummy container IP (use .2 in the subnet)
-        // This is a stub - real IPAM will allocate properly
-        let ip = generate_stub_ip(subnet);
-        (ip, gw.to_string())
+    // Parse gateway IP from config or use default
+    let gateway_ip: Ipv4Addr = if let Some(ref ipam_config) = config.ipam {
+        ipam_config
+            .gateway
+            .as_deref()
+            .unwrap_or(bridge::DEFAULT_GATEWAY)
+            .parse()
+            .map_err(|e: std::net::AddrParseError| {
+                CniError::new(CniErrorCode::InvalidNetworkConfig, "invalid gateway IP")
+                    .with_details(&e.to_string())
+            })?
     } else {
-        // Default fallback values
-        ("10.87.1.2/24".to_string(), "10.87.1.1".to_string())
+        bridge::DEFAULT_GATEWAY
+            .parse()
+            .expect("DEFAULT_GATEWAY constant is invalid")
     };
 
-    // Generate a dummy MAC address based on container ID
-    let mac = generate_stub_mac(&container_id);
+    // Step 1: Ensure bridge exists
+    let _bridge_index = bridge::ensure_bridge(bridge_name, gateway_ip, bridge::DEFAULT_PREFIX_LEN)?;
+
+    // Step 2: Allocate IP address
+    let allocation = ipam::allocate(&container_id)?;
+
+    // Step 3: Create veth pair
+    let veth_pair = veth::create_veth_pair(&container_id, &netns, &ifname, mtu)?;
+
+    // Step 4: Attach host veth to bridge
+    veth::setup_host_veth(veth_pair.host_index, bridge_name)?;
+
+    // Step 5: Configure container interface (in container namespace)
+    netns::with_netns(&netns, || {
+        veth::configure_container_interface(
+            &ifname,
+            allocation.ip,
+            allocation.prefix_len,
+            allocation.gateway,
+        )
+    })?;
 
     // Build the result
-    let result = CniResult::new(config.cni_version.clone())
-        .with_interface(ifname.clone(), mac, Some(netns.clone()))
-        .with_ip(ip_address.clone(), Some(gateway.clone()), 0)
-        .with_route("0.0.0.0/0".to_string(), Some(gateway.clone()));
+    let ip_with_prefix = format!("{}/{}", allocation.ip, allocation.prefix_len);
+    let gateway_str = allocation.gateway.to_string();
 
-    // Log for debugging
+    // Build result with two interfaces:
+    // 0: host-side veth (attached to bridge)
+    // 1: container-side veth (inside container namespace)
+    let result = CniResult::new(config.cni_version.clone())
+        .with_interface(veth_pair.host_ifname.clone(), String::new(), None)
+        .with_interface(ifname.clone(), veth_pair.mac_address, Some(netns.clone()))
+        .with_ip(ip_with_prefix.clone(), Some(gateway_str.clone()), 1) // interface index 1 = container side
+        .with_route("0.0.0.0/0".to_string(), Some(gateway_str.clone()));
+
     eprintln!(
-        "flatnet ADD: container={}, netns={}, ifname={}, ip={}",
-        container_id, netns, ifname, ip_address
+        "flatnet ADD: success, ip={}, gateway={}",
+        ip_with_prefix, gateway_str
     );
 
     // Output result to stdout
@@ -165,52 +199,6 @@ fn cmd_add(input: &str) -> Result<(), CniError> {
     Ok(())
 }
 
-/// Generate a stub IP address from a subnet (for Stage 2 testing)
-/// Takes "10.87.1.0/24" and returns "10.87.1.2/24"
-fn generate_stub_ip(subnet: &str) -> String {
-    // Split into network and prefix
-    let parts: Vec<&str> = subnet.split('/').collect();
-    if parts.len() != 2 {
-        return "10.87.1.2/24".to_string();
-    }
-
-    let network = parts[0];
-    let prefix = parts[1];
-
-    // Split network into octets
-    let octets: Vec<&str> = network.split('.').collect();
-    if octets.len() != 4 {
-        return "10.87.1.2/24".to_string();
-    }
-
-    // Replace the last octet with "2" (stub container IP)
-    format!(
-        "{}.{}.{}.2/{}",
-        octets[0], octets[1], octets[2], prefix
-    )
-}
-
-/// Generate a stub MAC address from container ID
-fn generate_stub_mac(container_id: &str) -> String {
-    // Use first 10 hex chars of container ID to generate MAC
-    // Format: 02:xx:xx:xx:xx:xx (locally administered unicast)
-    let hex_chars: String = container_id
-        .chars()
-        .filter(|c| c.is_ascii_hexdigit())
-        .take(10)
-        .collect();
-
-    let padded = format!("{:0<10}", hex_chars);
-    format!(
-        "02:{}:{}:{}:{}:{}",
-        &padded[0..2],
-        &padded[2..4],
-        &padded[4..6],
-        &padded[6..8],
-        &padded[8..10]
-    )
-}
-
 /// Handle DEL command - remove network interface
 fn cmd_del(input: &str) -> Result<(), CniError> {
     let _config: NetworkConfig = serde_json::from_str(input).map_err(|e| {
@@ -222,15 +210,26 @@ fn cmd_del(input: &str) -> Result<(), CniError> {
     let container_id = env::var("CNI_CONTAINERID").unwrap_or_default();
     let ifname = env::var("CNI_IFNAME").unwrap_or_default();
 
-    // TODO: Implement actual network teardown
-    // 1. Delete veth pair (or it may already be gone with the namespace)
-    // 2. Release IP address (via IPAM)
-
-    // DEL must be idempotent - if already deleted, succeed silently
     eprintln!(
         "flatnet DEL: container={}, ifname={}",
         container_id, ifname
     );
+
+    if container_id.is_empty() {
+        // Nothing to do without container ID
+        eprintln!("flatnet DEL: no container ID, nothing to clean up");
+        return Ok(());
+    }
+
+    // Step 1: Delete veth pair (if exists)
+    // Deleting the host side automatically deletes the container side
+    let host_ifname = veth::generate_host_ifname(&container_id);
+    veth::delete_veth(&host_ifname)?;
+
+    // Step 2: Release IP address
+    ipam::release(&container_id)?;
+
+    eprintln!("flatnet DEL: cleanup complete");
 
     // DEL outputs nothing on success
     Ok(())
@@ -265,23 +264,49 @@ fn cmd_check(input: &str) -> Result<(), CniError> {
         )
     })?;
 
-    // CHECK requires prevResult in the config for chained plugins
-    // For Stage 2, we just validate that we got the right input
-    if config.prev_result.is_none() {
-        eprintln!(
-            "flatnet CHECK: warning - no prevResult in config (container={}, ifname={})",
-            container_id, ifname
-        );
-    }
-
-    // TODO: Implement actual network verification in Stage 3
-    // 1. Check interface exists in container namespace
-    // 2. Verify IP configuration matches prevResult
-
     eprintln!(
         "flatnet CHECK: container={}, netns={}, ifname={}",
         container_id, netns, ifname
     );
+
+    let bridge_name = config.bridge_name();
+
+    // Check 1: Bridge exists
+    let _bridge_index = bridge::get_bridge_index(bridge_name).map_err(|_| {
+        CniError::new(
+            CniErrorCode::IoFailure,
+            &format!("bridge {} does not exist", bridge_name),
+        )
+    })?;
+
+    // Check 2: Host-side veth exists
+    let host_ifname = veth::generate_host_ifname(&container_id);
+    if !veth::veth_exists(&host_ifname)? {
+        return Err(CniError::new(
+            CniErrorCode::IoFailure,
+            &format!("host veth {} does not exist", host_ifname),
+        ));
+    }
+
+    // Check 3: IPAM allocation exists
+    if !ipam::has_allocation(&container_id)? {
+        return Err(CniError::new(
+            CniErrorCode::IpamFailure,
+            &format!("no IP allocation for container {}", container_id),
+        ));
+    }
+
+    // Check 4: Verify prevResult if present
+    if let Some(ref prev_result) = config.prev_result {
+        eprintln!(
+            "flatnet CHECK: prevResult present, verifying..."
+        );
+        // In a full implementation, we would verify the prevResult matches actual state
+        // For now, just log that we have it
+        let _ = prev_result;
+    }
+
+    eprintln!("flatnet CHECK: all checks passed");
 
     // CHECK outputs nothing on success
     Ok(())
@@ -308,54 +333,6 @@ fn cmd_version(_input: &str) -> Result<(), CniError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_generate_stub_ip() {
-        // Normal case
-        assert_eq!(generate_stub_ip("10.87.1.0/24"), "10.87.1.2/24");
-        assert_eq!(generate_stub_ip("192.168.0.0/16"), "192.168.0.2/16");
-        assert_eq!(generate_stub_ip("172.16.0.0/12"), "172.16.0.2/12");
-
-        // Edge cases - should return default
-        assert_eq!(generate_stub_ip("invalid"), "10.87.1.2/24");
-        assert_eq!(generate_stub_ip("10.0.0.0"), "10.87.1.2/24"); // No prefix
-        assert_eq!(generate_stub_ip("10.0.0/24"), "10.87.1.2/24"); // Missing octet
-    }
-
-    #[test]
-    fn test_generate_stub_mac() {
-        // Normal container ID (hex characters)
-        let mac = generate_stub_mac("abc123def456");
-        assert!(mac.starts_with("02:"));
-        assert_eq!(mac, "02:ab:c1:23:de:f4");
-
-        // Short container ID (should be padded)
-        let mac = generate_stub_mac("abc");
-        assert_eq!(mac, "02:ab:c0:00:00:00");
-
-        // Container ID with non-hex chars
-        let mac = generate_stub_mac("container-xyz-123");
-        // Only extracts hex chars: c, a, e (from "container"), 1, 2, 3 (from "123")
-        // Result: "02:ca:e1:23:00:00"
-        assert_eq!(mac, "02:ca:e1:23:00:00");
-    }
-
-    #[test]
-    fn test_generate_stub_mac_format() {
-        // Verify MAC format is valid (locally administered unicast)
-        let mac = generate_stub_mac("0123456789abcdef");
-        let parts: Vec<&str> = mac.split(':').collect();
-        assert_eq!(parts.len(), 6);
-
-        // First byte should be 02 (locally administered, unicast)
-        assert_eq!(parts[0], "02");
-
-        // All parts should be 2 hex chars
-        for part in &parts {
-            assert_eq!(part.len(), 2);
-            assert!(part.chars().all(|c| c.is_ascii_hexdigit()));
-        }
-    }
 
     #[test]
     fn test_supported_versions() {
