@@ -1,0 +1,14 @@
+{
+  "cniVersion": "1.0.0",
+  "name": "flatnet",
+  "plugins": [
+    {
+      "type": "flatnet",
+      "ipam": {
+        "type": "flatnet-ipam",
+        "subnet": "10.87.1.0/24",
+        "gateway": "10.87.1.1"
+      }
+    }
+  ]
+}
