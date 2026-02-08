@@ -1,0 +1,71 @@
+# Flatnet Test Container
+# A simple HTTP server container for integration testing
+#
+# Build:
+#   podman build -t flatnet-test:latest -f Containerfile .
+#
+# Run:
+#   podman run -d --name test-server --network flatnet flatnet-test:latest
+#
+# Test:
+#   curl http://<container-ip>/
+#   curl http://<container-ip>/health
+#
+# Note: This Containerfile uses heredoc syntax (COPY <<'EOF')
+#       which requires Podman 4.x+ or Docker BuildKit
+
+FROM docker.io/library/alpine:3.19
+
+# Install required packages
+RUN apk add --no-cache \
+    busybox-extras \
+    curl \
+    iperf3 \
+    iproute2 \
+    && rm -rf /var/cache/apk/*
+
+# Create a simple index page
+RUN mkdir -p /var/www/html && \
+    echo '<!DOCTYPE html><html><head><title>Flatnet Test</title></head><body><h1>Flatnet Test Container</h1><p>This container is used for integration testing.</p><p>Endpoints:</p><ul><li><a href="/health">/health</a> - Health check endpoint</li><li><a href="/info">/info</a> - Container information</li></ul></body></html>' > /var/www/html/index.html
+
+# Create health check endpoint
+RUN echo 'OK' > /var/www/html/health
+
+# Create info script (generates dynamic content)
+RUN mkdir -p /var/www/cgi-bin && \
+    echo '#!/bin/sh' > /var/www/cgi-bin/info && \
+    echo 'echo "Content-Type: text/plain"' >> /var/www/cgi-bin/info && \
+    echo 'echo ""' >> /var/www/cgi-bin/info && \
+    echo 'echo "Hostname: $(hostname)"' >> /var/www/cgi-bin/info && \
+    echo 'echo "IP: $(ip addr show eth0 2>/dev/null | grep "inet " | awk "{print \$2}" | cut -d/ -f1)"' >> /var/www/cgi-bin/info && \
+    echo 'echo "Date: $(date)"' >> /var/www/cgi-bin/info && \
+    echo 'echo "Uptime: $(cat /proc/uptime)"' >> /var/www/cgi-bin/info && \
+    chmod +x /var/www/cgi-bin/info
+
+# Expose HTTP port
+EXPOSE 80
+
+# Expose iperf3 port (for throughput testing)
+EXPOSE 5201
+
+# Working directory
+WORKDIR /var/www/html
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -q -O /dev/null http://localhost/health || exit 1
+
+# Start httpd and iperf3 in background
+# Using a simple script to manage both services
+COPY <<'EOF' /start.sh
+#!/bin/sh
+# Start iperf3 server in background (for throughput testing)
+iperf3 -s -D
+
+# Start httpd in foreground
+httpd -f -p 80 -h /var/www/html
+EOF
+
+RUN chmod +x /start.sh
+
+CMD ["/start.sh"]
