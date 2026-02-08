@@ -1,6 +1,12 @@
 //! IP Address Management (IPAM)
 //!
 //! Simple file-based IPAM for allocating and tracking IP addresses.
+//! Supports multihost configuration with host-ID based IP ranges.
+//!
+//! IP allocation scheme for multihost:
+//!   10.100.<host-id>.<container-id>
+//!   - host-id: 1-254 (unique per host)
+//!   - container-id: 10-254 (first 10 reserved for infrastructure)
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
@@ -22,10 +28,21 @@ pub const ALLOCATIONS_FILE: &str = "allocations.json";
 /// Lock file for concurrent access
 pub const LOCK_FILE: &str = ".lock";
 
-/// Default subnet configuration
+/// Default host ID (for single-host deployments)
+pub const DEFAULT_HOST_ID: u8 = 1;
+
+/// Multihost subnet base (10.100.0.0/16)
+pub const MULTIHOST_SUBNET_BASE: &str = "10.100";
+
+/// Default subnet configuration (legacy single-host)
 pub const DEFAULT_SUBNET: &str = "10.87.1.0/24";
 pub const DEFAULT_RANGE_START: &str = "10.87.1.2";
 pub const DEFAULT_RANGE_END: &str = "10.87.1.254";
+
+/// Container ID start for multihost (first 10 reserved for infrastructure)
+pub const MULTIHOST_CONTAINER_START: u8 = 10;
+/// Container ID end for multihost
+pub const MULTIHOST_CONTAINER_END: u8 = 254;
 
 /// IPAM state stored in file
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,8 +59,20 @@ pub struct IpamState {
     /// End of allocation range
     pub range_end: String,
 
+    /// Host ID for multihost deployments
+    #[serde(default = "default_host_id")]
+    pub host_id: u8,
+
+    /// Multihost mode enabled
+    #[serde(default)]
+    pub multihost: bool,
+
     /// Map of container ID to allocated IP
     pub allocations: HashMap<String, String>,
+}
+
+fn default_host_id() -> u8 {
+    DEFAULT_HOST_ID
 }
 
 impl Default for IpamState {
@@ -53,8 +82,35 @@ impl Default for IpamState {
             gateway: crate::bridge::DEFAULT_GATEWAY.to_string(),
             range_start: DEFAULT_RANGE_START.to_string(),
             range_end: DEFAULT_RANGE_END.to_string(),
+            host_id: DEFAULT_HOST_ID,
+            multihost: false,
             allocations: HashMap::new(),
         }
+    }
+}
+
+impl IpamState {
+    /// Create a new multihost IPAM state for the given host ID
+    pub fn new_multihost(host_id: u8) -> Self {
+        let subnet = format!("{}.{}.0/24", MULTIHOST_SUBNET_BASE, host_id);
+        let gateway = format!("{}.{}.1", MULTIHOST_SUBNET_BASE, host_id);
+        let range_start = format!("{}.{}.{}", MULTIHOST_SUBNET_BASE, host_id, MULTIHOST_CONTAINER_START);
+        let range_end = format!("{}.{}.{}", MULTIHOST_SUBNET_BASE, host_id, MULTIHOST_CONTAINER_END);
+
+        Self {
+            subnet,
+            gateway,
+            range_start,
+            range_end,
+            host_id,
+            multihost: true,
+            allocations: HashMap::new(),
+        }
+    }
+
+    /// Check if this state uses multihost IP scheme
+    pub fn is_multihost(&self) -> bool {
+        self.multihost
     }
 }
 
@@ -68,6 +124,9 @@ pub struct IpAllocation {
 
     /// Gateway IP
     pub gateway: Ipv4Addr,
+
+    /// Host ID (for multihost deployments)
+    pub host_id: u8,
 }
 
 /// Ensure IPAM directory and files exist
@@ -215,10 +274,18 @@ fn parse_prefix_len(subnet: &str) -> Result<u8, CniError> {
     })
 }
 
-/// Allocate an IP address for a container
+/// Allocate an IP address for a container (legacy single-host mode)
 pub fn allocate(container_id: &str) -> Result<IpAllocation, CniError> {
+    allocate_with_host_id(container_id, None)
+}
+
+/// Allocate an IP address for a container with optional host ID
+///
+/// If host_id is provided, uses multihost IP scheme: 10.100.<host-id>.<container-id>
+/// Otherwise, uses legacy single-host scheme.
+pub fn allocate_with_host_id(container_id: &str, host_id: Option<u8>) -> Result<IpAllocation, CniError> {
     with_ipam_lock(|| {
-        let mut state = load_state()?;
+        let mut state = load_or_init_state(host_id)?;
 
         // Check if container already has an allocation
         if let Some(ip_str) = state.allocations.get(container_id) {
@@ -235,6 +302,7 @@ pub fn allocate(container_id: &str) -> Result<IpAllocation, CniError> {
                 ip,
                 prefix_len,
                 gateway,
+                host_id: state.host_id,
             });
         }
 
@@ -264,15 +332,17 @@ pub fn allocate(container_id: &str) -> Result<IpAllocation, CniError> {
                     .insert(container_id.to_string(), ip.to_string());
                 save_state(&state)?;
 
+                let mode = if state.multihost { "multihost" } else { "single-host" };
                 eprintln!(
-                    "flatnet IPAM: allocated {} to container {}",
-                    ip, container_id
+                    "flatnet IPAM ({}): allocated {} to container {} (host_id={})",
+                    mode, ip, container_id, state.host_id
                 );
 
                 return Ok(IpAllocation {
                     ip,
                     prefix_len,
                     gateway,
+                    host_id: state.host_id,
                 });
             }
         }
@@ -282,6 +352,39 @@ pub fn allocate(container_id: &str) -> Result<IpAllocation, CniError> {
             "no available IP addresses in range",
         ))
     })
+}
+
+/// Load existing state or initialize for the given host ID
+fn load_or_init_state(host_id: Option<u8>) -> Result<IpamState, CniError> {
+    let path = Path::new(IPAM_DIR).join(ALLOCATIONS_FILE);
+
+    if path.exists() {
+        let state = load_state()?;
+        // If host_id is provided and differs from stored state, warn but continue
+        if let Some(new_id) = host_id {
+            if state.host_id != new_id && !state.allocations.is_empty() {
+                eprintln!(
+                    "flatnet IPAM: WARNING - host_id changed from {} to {}, existing allocations preserved",
+                    state.host_id, new_id
+                );
+            }
+        }
+        Ok(state)
+    } else {
+        // Initialize new state
+        let state = match host_id {
+            Some(id) => IpamState::new_multihost(id),
+            None => IpamState::default(),
+        };
+        save_state(&state)?;
+        eprintln!(
+            "flatnet IPAM: initialized {} mode (host_id={}, subnet={})",
+            if state.multihost { "multihost" } else { "single-host" },
+            state.host_id,
+            state.subnet
+        );
+        Ok(state)
+    }
 }
 
 /// Release an IP address for a container
@@ -321,10 +424,43 @@ pub fn get_allocation(container_id: &str) -> Result<Option<IpAllocation>, CniErr
                     ip,
                     prefix_len,
                     gateway,
+                    host_id: state.host_id,
                 }))
             }
             None => Ok(None),
         }
+    })
+}
+
+/// Get all current allocations
+pub fn get_all_allocations() -> Result<Vec<(String, IpAllocation)>, CniError> {
+    with_ipam_lock(|| {
+        let state = load_state()?;
+        let prefix_len = parse_prefix_len(&state.subnet)?;
+        let gateway = parse_ip(&state.gateway)?;
+
+        let mut allocations = Vec::new();
+        for (container_id, ip_str) in &state.allocations {
+            let ip = parse_ip(ip_str)?;
+            allocations.push((
+                container_id.clone(),
+                IpAllocation {
+                    ip,
+                    prefix_len,
+                    gateway,
+                    host_id: state.host_id,
+                },
+            ));
+        }
+        Ok(allocations)
+    })
+}
+
+/// Get current host ID from IPAM state
+pub fn get_host_id() -> Result<u8, CniError> {
+    with_ipam_lock(|| {
+        let state = load_state()?;
+        Ok(state.host_id)
     })
 }
 
@@ -346,12 +482,40 @@ mod tests {
         assert_eq!(state.subnet, DEFAULT_SUBNET);
         assert_eq!(state.range_start, DEFAULT_RANGE_START);
         assert_eq!(state.range_end, DEFAULT_RANGE_END);
+        assert_eq!(state.host_id, DEFAULT_HOST_ID);
+        assert!(!state.multihost);
         assert!(state.allocations.is_empty());
+    }
+
+    #[test]
+    fn test_multihost_state() {
+        let state = IpamState::new_multihost(5);
+        assert_eq!(state.subnet, "10.100.5.0/24");
+        assert_eq!(state.gateway, "10.100.5.1");
+        assert_eq!(state.range_start, "10.100.5.10");
+        assert_eq!(state.range_end, "10.100.5.254");
+        assert_eq!(state.host_id, 5);
+        assert!(state.multihost);
+        assert!(state.allocations.is_empty());
+    }
+
+    #[test]
+    fn test_multihost_state_host_boundaries() {
+        // Test host ID 1 (minimum)
+        let state1 = IpamState::new_multihost(1);
+        assert_eq!(state1.subnet, "10.100.1.0/24");
+        assert_eq!(state1.gateway, "10.100.1.1");
+
+        // Test host ID 254 (maximum)
+        let state254 = IpamState::new_multihost(254);
+        assert_eq!(state254.subnet, "10.100.254.0/24");
+        assert_eq!(state254.gateway, "10.100.254.1");
     }
 
     #[test]
     fn test_parse_ip() {
         assert!(parse_ip("10.87.1.2").is_ok());
+        assert!(parse_ip("10.100.1.10").is_ok());
         assert!(parse_ip("invalid").is_err());
     }
 
@@ -359,6 +523,7 @@ mod tests {
     fn test_parse_prefix_len() {
         assert_eq!(parse_prefix_len("10.87.1.0/24").unwrap(), 24);
         assert_eq!(parse_prefix_len("10.0.0.0/8").unwrap(), 8);
+        assert_eq!(parse_prefix_len("10.100.1.0/24").unwrap(), 24);
         assert!(parse_prefix_len("invalid").is_err());
     }
 }
