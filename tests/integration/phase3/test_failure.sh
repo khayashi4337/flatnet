@@ -73,7 +73,8 @@ cleanup() {
 }
 
 # Set trap for cleanup on script exit
-trap cleanup EXIT
+# Also handle SIGINT and SIGTERM for proper cleanup on Ctrl+C
+trap cleanup EXIT INT TERM
 
 # Test counters
 TESTS_PASSED=0
@@ -99,7 +100,7 @@ log_warn() {
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[ERROR]${NC} $1" >&2
 }
 
 log_debug() {
@@ -194,10 +195,10 @@ echo "  Remote IP:      $REMOTE_IP"
 echo "  Lighthouse IP:  $LIGHTHOUSE_IP"
 echo "  API Port:       $API_PORT"
 echo "  Base URL:       $BASE_URL"
-echo "  Destructive:    $( [ $DESTRUCTIVE_MODE -eq 1 ] && echo 'YES' || echo 'NO' )"
+echo "  Destructive:    $( [ "$DESTRUCTIVE_MODE" -eq 1 ] && echo 'YES' || echo 'NO' )"
 echo ""
 
-if [ $DESTRUCTIVE_MODE -eq 1 ]; then
+if [ "$DESTRUCTIVE_MODE" -eq 1 ]; then
     echo -e "${RED}WARNING: Destructive mode enabled. Some tests may affect system state.${NC}"
     echo ""
 fi
@@ -338,7 +339,7 @@ fi
 
 log_test "Test 4: Network Partition Simulation"
 
-if [ $DESTRUCTIVE_MODE -eq 1 ]; then
+if [ "$DESTRUCTIVE_MODE" -eq 1 ]; then
     if ! is_root && ! command_exists sudo; then
         log_result SKIP "Requires root privileges" "Run with sudo or as root"
     elif ! command_exists iptables; then
@@ -349,15 +350,13 @@ if [ $DESTRUCTIVE_MODE -eq 1 ]; then
         # Block UDP port 4242 (Nebula's default port)
         log_info "Blocking Nebula traffic (UDP 4242)..."
 
-        # Use sudo if not root
-        if is_root; then
-            SUDO_PREFIX=""
-        else
-            SUDO_PREFIX="sudo "
+        # Add blocking rule (determine iptables command)
+        iptables_cmd="iptables"
+        if ! is_root; then
+            iptables_cmd="sudo iptables"
         fi
 
-        # Add blocking rule
-        if ${SUDO_PREFIX}iptables -A OUTPUT -p udp --dport 4242 -j DROP 2>/dev/null; then
+        if $iptables_cmd -A OUTPUT -p udp --dport 4242 -j DROP 2>/dev/null; then
             log_result PASS "Network partition rule added"
 
             # Wait and check behavior
@@ -373,7 +372,7 @@ if [ $DESTRUCTIVE_MODE -eq 1 ]; then
 
             # Remove blocking rule
             log_info "Removing network partition rule..."
-            if ${SUDO_PREFIX}iptables -D OUTPUT -p udp --dport 4242 -j DROP 2>/dev/null; then
+            if $iptables_cmd -D OUTPUT -p udp --dport 4242 -j DROP 2>/dev/null; then
                 log_result PASS "Network partition rule removed"
             else
                 log_warn "Failed to remove rule - manual cleanup may be required"
@@ -421,7 +420,7 @@ log_info "  4. Run: sudo ./scripts/wsl2/setup-forwarding.sh"
 log_info "  5. Start containers and verify IPs"
 log_info ""
 log_info "Recovery script:"
-log_info "  /home/kh/prj/flatnet/scripts/wsl2/setup-forwarding.sh"
+log_info "  ${PROJECT_ROOT}/scripts/wsl2/setup-forwarding.sh"
 
 # Check current bridge status
 if command_exists ip; then
@@ -470,7 +469,7 @@ for i in $(seq 1 10); do
     fi
 done
 
-if [ $fail_count -eq 0 ]; then
+if [ "$fail_count" -eq 0 ]; then
     log_result PASS "API handled 10 rapid requests (all successful)"
 else
     log_result PASS "API handled 10 rapid requests ($success_count success, $fail_count failed)"
@@ -535,7 +534,7 @@ log_info "Making 5 concurrent requests..."
 # Create temporary files for results (use script-level TMP_DIR)
 TMP_DIR=$(mktemp -d)
 
-for i in $(seq 1 5); do
+for i in 1 2 3 4 5; do
     (curl -s --connect-timeout "$CURL_TIMEOUT" "${BASE_URL}/api/status" > "${TMP_DIR}/result_$i" 2>&1 || echo "FAILED" > "${TMP_DIR}/result_$i") &
 done
 
@@ -544,15 +543,15 @@ wait
 
 # Check results
 concurrent_success=0
-for i in $(seq 1 5); do
+for i in 1 2 3 4 5; do
     if [ -f "${TMP_DIR}/result_$i" ] && ! grep -q "FAILED" "${TMP_DIR}/result_$i"; then
         concurrent_success=$((concurrent_success + 1))
     fi
 done
 
-if [ $concurrent_success -eq 5 ]; then
+if [ "$concurrent_success" -eq 5 ]; then
     log_result PASS "All 5 concurrent requests succeeded"
-elif [ $concurrent_success -gt 0 ]; then
+elif [ "$concurrent_success" -gt 0 ]; then
     log_result PASS "Concurrent requests: $concurrent_success/5 succeeded"
 else
     log_result FAIL "All concurrent requests failed"
@@ -587,5 +586,7 @@ fi
 # SUMMARY
 # =============================================================================
 
-print_summary
-exit $?
+if ! print_summary; then
+    exit 1
+fi
+exit 0

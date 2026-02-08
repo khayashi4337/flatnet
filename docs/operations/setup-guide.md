@@ -307,6 +307,9 @@ Get-Content F:\flatnet\logs\nebula.log | Select-String "handshake"
 
 ## CNI Plugin インストール
 
+> **注意:** CNI Plugin は Phase 2 で実装予定です。以下は Phase 2 完了後の手順です。
+> Phase 1 では Gateway のみを使用し、CNI Plugin なしで動作します。
+
 ### Step 1: ビルド環境の準備
 
 WSL2 で実行:
@@ -324,6 +327,7 @@ sudo apt install -y build-essential pkg-config
 ### Step 2: CNI Plugin のビルド
 
 ```bash
+# Phase 2 完了後、以下のパスにソースコードが配置されます
 cd /home/kh/prj/flatnet/src/flatnet-cni
 
 # ビルド

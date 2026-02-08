@@ -51,7 +51,8 @@ cleanup() {
 }
 
 # Set trap for cleanup on script exit
-trap cleanup EXIT
+# Also handle SIGINT and SIGTERM for proper cleanup on Ctrl+C
+trap cleanup EXIT INT TERM
 
 # Performance thresholds (milliseconds)
 LATENCY_EXCELLENT=50
@@ -78,7 +79,7 @@ log_warn() {
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[ERROR]${NC} $1" >&2
 }
 
 log_debug() {
@@ -113,16 +114,22 @@ format_latency() {
     local int_value
     int_value=$(printf "%.0f" "$value" 2>/dev/null || echo "$value")
 
+    # Check for non-numeric int_value to avoid comparison errors
+    if ! [[ "$int_value" =~ ^[0-9]+$ ]]; then
+        echo "${latency}${unit}"
+        return
+    fi
+
     if [ "$int_value" -le "$LATENCY_EXCELLENT" ]; then
-        echo -e "${GREEN}${latency}${unit}${NC} (excellent)"
+        printf '%b%s%s%b (excellent)\n' "${GREEN}" "${latency}" "${unit}" "${NC}"
     elif [ "$int_value" -le "$LATENCY_GOOD" ]; then
-        echo -e "${GREEN}${latency}${unit}${NC} (good)"
+        printf '%b%s%s%b (good)\n' "${GREEN}" "${latency}" "${unit}" "${NC}"
     elif [ "$int_value" -le "$LATENCY_ACCEPTABLE" ]; then
-        echo -e "${YELLOW}${latency}${unit}${NC} (acceptable)"
+        printf '%b%s%s%b (acceptable)\n' "${YELLOW}" "${latency}" "${unit}" "${NC}"
     elif [ "$int_value" -le "$LATENCY_WARNING" ]; then
-        echo -e "${YELLOW}${latency}${unit}${NC} (slow)"
+        printf '%b%s%s%b (slow)\n' "${YELLOW}" "${latency}" "${unit}" "${NC}"
     else
-        echo -e "${RED}${latency}${unit}${NC} (very slow)"
+        printf '%b%s%s%b (very slow)\n' "${RED}" "${latency}" "${unit}" "${NC}"
     fi
 }
 
@@ -159,7 +166,7 @@ calc_stats() {
         fi
     done
 
-    if [ $count -gt 0 ]; then
+    if [ "$count" -gt 0 ]; then
         local avg
         avg=$(echo "scale=2; $sum / $count" | bc 2>/dev/null || echo "N/A")
         echo "min=$min max=$max avg=$avg count=$count"
@@ -239,7 +246,7 @@ log_test "Test 1: API Latency (Health Endpoint)"
 log_step "Measuring ${ITERATIONS} requests to /api/health"
 
 latencies=""
-for i in $(seq 1 $ITERATIONS); do
+for i in $(seq 1 "$ITERATIONS"); do
     start_time=$(date +%s%3N 2>/dev/null || echo "0")
     if curl -s --connect-timeout "$CURL_TIMEOUT" "${BASE_URL}/api/health" >/dev/null 2>&1; then
         end_time=$(date +%s%3N 2>/dev/null || echo "0")
@@ -251,9 +258,13 @@ for i in $(seq 1 $ITERATIONS); do
     fi
 done
 
-if [ -n "$latencies" ] && [ $HAVE_BC -eq 1 ]; then
+if [ -n "$latencies" ] && [ "$HAVE_BC" -eq 1 ]; then
     stats=$(calc_stats "$latencies")
-    eval "$stats"
+    # Parse stats safely instead of using eval
+    min=$(echo "$stats" | grep -o 'min=[^ ]*' | cut -d= -f2)
+    max=$(echo "$stats" | grep -o 'max=[^ ]*' | cut -d= -f2)
+    avg=$(echo "$stats" | grep -o 'avg=[^ ]*' | cut -d= -f2)
+    count=$(echo "$stats" | grep -o 'count=[^ ]*' | cut -d= -f2)
     echo ""
     echo "  Results:"
     echo "    Minimum: $(format_latency "$min")"
@@ -270,7 +281,7 @@ fi
 
 log_test "Test 2: Ping Latency"
 
-if [ $HAVE_PING -eq 1 ]; then
+if [ "$HAVE_PING" -eq 1 ]; then
     log_step "Measuring ping latency to Gateway ($GATEWAY_IP)"
 
     ping_output=$(ping -c "$ITERATIONS" -q "$GATEWAY_IP" 2>/dev/null || echo "failed")
@@ -347,7 +358,7 @@ for target in "Gateway:${GATEWAY_IP}" "Remote:${REMOTE_IP}"; do
         total=$(echo "$timing" | grep -o 'total=[0-9.]*' | cut -d'=' -f2)
 
         # Convert to milliseconds
-        if [ $HAVE_BC -eq 1 ]; then
+        if [ "$HAVE_BC" -eq 1 ]; then
             dns_ms=$(echo "$dns * 1000" | bc 2>/dev/null || echo "N/A")
             connect_ms=$(echo "$connect * 1000" | bc 2>/dev/null || echo "N/A")
             ttfb_ms=$(echo "$ttfb * 1000" | bc 2>/dev/null || echo "N/A")
@@ -374,7 +385,7 @@ done
 
 log_test "Test 4: Throughput Measurement"
 
-if [ $HAVE_IPERF3 -eq 1 ]; then
+if [ "$HAVE_IPERF3" -eq 1 ]; then
     log_step "Measuring throughput with iperf3"
     log_info "Note: iperf3 server must be running on remote host"
     log_info "  Remote: iperf3 -s"
@@ -388,7 +399,7 @@ if [ $HAVE_IPERF3 -eq 1 ]; then
         sent_bps=$(echo "$iperf_result" | grep -o '"bits_per_second":[0-9.]*' | head -1 | cut -d':' -f2)
         recv_bps=$(echo "$iperf_result" | grep -o '"bits_per_second":[0-9.]*' | tail -1 | cut -d':' -f2)
 
-        if [ $HAVE_BC -eq 1 ] && [ -n "$sent_bps" ]; then
+        if [ "$HAVE_BC" -eq 1 ] && [ -n "$sent_bps" ]; then
             sent_mbps=$(echo "scale=2; $sent_bps / 1000000" | bc)
             recv_mbps=$(echo "scale=2; $recv_bps / 1000000" | bc)
             echo ""
@@ -415,7 +426,7 @@ else
     done
 
     if [ -n "$speed" ] && [ "$speed" != "0" ]; then
-        if [ $HAVE_BC -eq 1 ]; then
+        if [ "$HAVE_BC" -eq 1 ]; then
             speed_kbps=$(echo "scale=2; $speed / 1024" | bc)
             echo ""
             echo "  Results: ~${speed_kbps} KB/s (limited by small response size)"
@@ -470,7 +481,7 @@ for i in $(seq 1 10); do
     sleep 1
 done
 
-if [ $p2p_established -eq 1 ]; then
+if [ "$p2p_established" -eq 1 ]; then
     if [ "$start_time" != "0" ] && [ "$end_time" != "0" ]; then
         transition_time=$((end_time - start_time))
         echo "    P2P established in: $(format_latency "$transition_time")"
@@ -511,9 +522,12 @@ for i in $(seq 1 5); do
     fi
 done
 
-if [ -n "$latencies" ] && [ $HAVE_BC -eq 1 ]; then
+if [ -n "$latencies" ] && [ "$HAVE_BC" -eq 1 ]; then
     stats=$(calc_stats "$latencies")
-    eval "$stats"
+    # Parse stats safely instead of using eval
+    min=$(echo "$stats" | grep -o 'min=[^ ]*' | cut -d= -f2)
+    max=$(echo "$stats" | grep -o 'max=[^ ]*' | cut -d= -f2)
+    avg=$(echo "$stats" | grep -o 'avg=[^ ]*' | cut -d= -f2)
     echo ""
     echo "  API Response Time (includes network + processing):"
     echo "    Minimum: $(format_latency "$min")"
@@ -542,7 +556,7 @@ for concurrency in 1 5 10; do
     start_time=$(date +%s%3N 2>/dev/null || echo "0")
 
     # Launch concurrent requests
-    for i in $(seq 1 $concurrency); do
+    for i in $(seq 1 "$concurrency"); do
         (curl -s -o /dev/null -w "%{time_total}" --connect-timeout "$CURL_TIMEOUT" \
             "${BASE_URL}/api/health" > "${TMP_DIR}/time_$i" 2>/dev/null || echo "0" > "${TMP_DIR}/time_$i") &
     done
@@ -558,15 +572,15 @@ for concurrency in 1 5 10; do
 
         # Calculate average request time
         total_req_time=0
-        for i in $(seq 1 $concurrency); do
+        for i in $(seq 1 "$concurrency"); do
             req_time=$(cat "${TMP_DIR}/time_$i" 2>/dev/null || echo "0")
-            if [ $HAVE_BC -eq 1 ]; then
+            if [ "$HAVE_BC" -eq 1 ]; then
                 req_time_ms=$(echo "$req_time * 1000" | bc 2>/dev/null || echo "0")
                 total_req_time=$(echo "$total_req_time + $req_time_ms" | bc 2>/dev/null || echo "$total_req_time")
             fi
         done
 
-        if [ $HAVE_BC -eq 1 ] && [ "$total_req_time" != "0" ]; then
+        if [ "$HAVE_BC" -eq 1 ] && [ "$total_req_time" != "0" ]; then
             avg_req_time=$(echo "scale=2; $total_req_time / $concurrency" | bc)
             echo "    Average request time: ${avg_req_time}ms"
         fi
@@ -587,7 +601,7 @@ echo "    API endpoint: ${BASE_URL}/api/health"
 timing=$(curl -s -o /dev/null -w "total=%{time_total}s" --connect-timeout "$CURL_TIMEOUT" \
     "${BASE_URL}/api/health" 2>/dev/null || echo "total=N/As")
 total_time=$(echo "$timing" | grep -o 'total=[0-9.]*' | cut -d'=' -f2)
-if [ $HAVE_BC -eq 1 ] && [ -n "$total_time" ]; then
+if [ "$HAVE_BC" -eq 1 ] && [ -n "$total_time" ]; then
     total_ms=$(echo "$total_time * 1000" | bc 2>/dev/null)
     echo "    Current latency: $(format_latency "${total_ms%.*}")"
 fi
@@ -603,19 +617,24 @@ fi
 echo ""
 echo "  Recommendations:"
 # Use final latency measurement for recommendation
-if [ $HAVE_BC -eq 1 ] && [ -n "$total_ms" ]; then
+if [ "$HAVE_BC" -eq 1 ] && [ -n "$total_ms" ]; then
     summary_latency=$(printf "%.0f" "${total_ms%.*}" 2>/dev/null || echo "0")
-    if [ "$summary_latency" -le "$LATENCY_EXCELLENT" ]; then
-        echo "    - Performance is excellent"
-    elif [ "$summary_latency" -le "$LATENCY_GOOD" ]; then
-        echo "    - Performance is good"
-    elif [ "$summary_latency" -le "$LATENCY_ACCEPTABLE" ]; then
-        echo "    - Performance is acceptable"
-        echo "    - Consider checking network congestion"
+    # Validate that summary_latency is a number
+    if [[ "$summary_latency" =~ ^[0-9]+$ ]]; then
+        if [ "$summary_latency" -le "$LATENCY_EXCELLENT" ]; then
+            echo "    - Performance is excellent"
+        elif [ "$summary_latency" -le "$LATENCY_GOOD" ]; then
+            echo "    - Performance is good"
+        elif [ "$summary_latency" -le "$LATENCY_ACCEPTABLE" ]; then
+            echo "    - Performance is acceptable"
+            echo "    - Consider checking network congestion"
+        else
+            echo "    - Performance needs improvement"
+            echo "    - Check Nebula tunnel status"
+            echo "    - Consider network optimization"
+        fi
     else
-        echo "    - Performance needs improvement"
-        echo "    - Check Nebula tunnel status"
-        echo "    - Consider network optimization"
+        echo "    - Unable to measure latency for recommendations"
     fi
 else
     echo "    - Unable to measure latency for recommendations"

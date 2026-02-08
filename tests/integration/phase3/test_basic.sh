@@ -60,7 +60,7 @@ log_warn() {
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[ERROR]${NC} $1" >&2
 }
 
 log_debug() {
@@ -224,7 +224,7 @@ log_debug "Response: $RESPONSE"
 
 if [ -n "$RESPONSE" ]; then
     if echo "$RESPONSE" | grep -qE '^\['; then
-        count=$(echo "$RESPONSE" | grep -o '"id"' | wc -l)
+        count=$(echo "$RESPONSE" | grep -c '"id"' 2>/dev/null || echo 0)
         log_result PASS "Container registry responds (containers: $count)"
     else
         log_result PASS "Container registry responds (empty or different format)"
@@ -243,7 +243,7 @@ log_test "Test 4: Flatnet IP Assignment (Local)"
 RESPONSE=$(curl -s --connect-timeout "$CURL_TIMEOUT" "${BASE_URL}/api/containers" 2>/dev/null || echo "[]")
 log_debug "Response: $RESPONSE"
 
-if echo "$RESPONSE" | grep -qE '"ip"\s*:\s*"10\.[0-9]+\.[0-9]+\.[0-9]+"'; then
+if echo "$RESPONSE" | grep -qE '"ip"[ 	]*:[ 	]*"10\.[0-9]+\.[0-9]+\.[0-9]+"'; then
     log_result PASS "Containers have Flatnet IP addresses assigned"
 
     # Extract first IP for display
@@ -359,7 +359,7 @@ log_debug "Response: $RESPONSE"
 
 if [ -n "$RESPONSE" ]; then
     if echo "$RESPONSE" | grep -qE '^\{'; then
-        route_count=$(echo "$RESPONSE" | grep -o '"type"' | wc -l)
+        route_count=$(echo "$RESPONSE" | grep -c '"type"' 2>/dev/null || echo 0)
         log_result PASS "All routes query successful (routes: $route_count)"
     else
         log_result PASS "Routes endpoint responds"
@@ -399,5 +399,8 @@ fi
 # SUMMARY
 # =============================================================================
 
-print_summary
-exit $?
+if ! print_summary; then
+    exit 1
+fi
+# Explicitly exit with success (trap cleanup runs automatically)
+exit 0

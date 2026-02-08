@@ -456,9 +456,9 @@ Write-Host "Backup completed: $backupDir"
    Restart-Service OpenResty
    ```
 
-3. **CNI Plugin の復旧**
+3. **CNI Plugin の復旧** *(Phase 2 以降)*
    ```bash
-   # プラグインの再インストール
+   # プラグインの再インストール (Phase 2 完了後)
    cd /home/kh/prj/flatnet/src/flatnet-cni
    cargo build --release
    sudo cp target/release/flatnet /opt/cni/bin/

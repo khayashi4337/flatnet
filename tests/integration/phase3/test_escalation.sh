@@ -47,7 +47,8 @@ cleanup_escalation_state() {
 }
 
 # Set trap for cleanup on script exit (in case of early exit)
-trap cleanup_escalation_state EXIT
+# Also handle SIGINT and SIGTERM for proper cleanup on Ctrl+C
+trap cleanup_escalation_state EXIT INT TERM
 
 # Test counters
 TESTS_PASSED=0
@@ -72,7 +73,7 @@ log_warn() {
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[ERROR]${NC} $1" >&2
 }
 
 log_debug() {
@@ -149,7 +150,7 @@ wait_for_state() {
     local interval="${4:-1}"
 
     local elapsed=0
-    while [ $elapsed -lt $max_wait ]; do
+    while [ "$elapsed" -lt "$max_wait" ]; do
         local current_state
         current_state=$(get_state "$ip")
         if [ "$current_state" = "$expected_state" ]; then
@@ -359,7 +360,7 @@ log_debug "Response: $RESPONSE"
 
 if [ -n "$RESPONSE" ]; then
     if echo "$RESPONSE" | grep -qE '^\{'; then
-        state_count=$(echo "$RESPONSE" | grep -o '"state"' | wc -l)
+        state_count=$(echo "$RESPONSE" | grep -c '"state"' 2>/dev/null || echo 0)
         log_result PASS "Retrieved all escalation states (count: $state_count)"
     else
         log_result PASS "States endpoint responds (no states tracked)"
@@ -534,5 +535,7 @@ log_result PASS "Test state cleaned up"
 # SUMMARY
 # =============================================================================
 
-print_summary
-exit $?
+if ! print_summary; then
+    exit 1
+fi
+exit 0
