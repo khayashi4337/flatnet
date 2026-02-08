@@ -26,7 +26,7 @@ pub struct NetworkConfig {
 
     // Flatnet-specific configuration
 
-    /// Bridge name (default: "flatnet0")
+    /// Bridge name (default: "flatnet-br0")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bridge: Option<String>,
 
@@ -52,9 +52,9 @@ pub struct NetworkConfig {
 }
 
 impl NetworkConfig {
-    /// Get the bridge name, defaulting to "flatnet0"
+    /// Get the bridge name, defaulting to "flatnet-br0"
     pub fn bridge_name(&self) -> &str {
-        self.bridge.as_deref().unwrap_or("flatnet0")
+        self.bridge.as_deref().unwrap_or(crate::bridge::DEFAULT_BRIDGE_NAME)
     }
 
     /// Get the MTU value for network interfaces
@@ -158,7 +158,7 @@ mod tests {
         assert_eq!(config.cni_version, "1.0.0");
         assert_eq!(config.name, "test-network");
         assert_eq!(config.plugin_type, "flatnet");
-        assert_eq!(config.bridge_name(), "flatnet0");
+        assert_eq!(config.bridge_name(), "flatnet-br0");
         assert_eq!(config.mtu_value(), 1500);
     }
 
