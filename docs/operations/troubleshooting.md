@@ -404,5 +404,7 @@ sudo ./scripts/test-integration.sh --quick
 
 ## 関連ドキュメント
 
-- [Phase 2 Setup Guide](../setup/phase-2-setup.md)
-- [CNI Operations Guide](cni-operations.md)
+- [Setup Guide](setup-guide.md) - 初期セットアップ手順
+- [Operations Guide](operations-guide.md) - 日常運用タスク
+- [Phase 2 Setup Guide](../setup/phase-2-setup.md) - Phase 2 セットアップ
+- [CNI Operations Guide](cni-operations.md) - CNI 詳細運用
