@@ -1,0 +1,50 @@
+[package]
+name = "flatnet-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Flatnet CLI tool for system management"
+authors = ["Flatnet Team"]
+license = "MIT"
+keywords = ["flatnet", "cli", "networking"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "flatnet"
+path = "src/main.rs"
+
+[dependencies]
+# CLI framework
+clap = { version = "4", features = ["derive", "color", "env"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.11", features = ["json"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Terminal output
+colored = "2"
+# tabled is used by the ps command (Stage 3)
+tabled = "0.14"
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Configuration
+dirs = "5"
+toml = "0.8"
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
