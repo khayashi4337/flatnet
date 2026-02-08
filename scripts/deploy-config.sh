@@ -65,19 +65,19 @@ fi
 #------------------------------------------------------------------------------
 
 log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    printf '%b[INFO]%b %s\n' "${BLUE}" "${NC}" "$1"
 }
 
 log_success() {
-    echo -e "${GREEN}[OK]${NC} $1"
+    printf '%b[OK]%b %s\n' "${GREEN}" "${NC}" "$1"
 }
 
 log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
+    printf '%b[WARN]%b %s\n' "${YELLOW}" "${NC}" "$1"
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1" >&2
+    printf '%b[ERROR]%b %s\n' "${RED}" "${NC}" "$1" >&2
 }
 
 show_help() {
@@ -184,7 +184,7 @@ deploy_config() {
     fi
 
     # Copy all configuration files
-    cp -r "${REPO_CONFIG}"/* "${WIN_CONFIG}/"
+    cp -r "${REPO_CONFIG}/." "${WIN_CONFIG}/"
 
     log_success "Configuration files deployed to ${WIN_CONFIG}"
 }
@@ -217,9 +217,11 @@ reload_openresty() {
         return 0
     fi
 
-    # Check if nginx is running
-    if ! pgrep -x "nginx.exe" > /dev/null 2>&1; then
-        log_warn "OpenResty is not running. Skipping reload."
+    # Check if nginx is running by checking PID file
+    # Note: pgrep doesn't work for Windows processes from WSL2
+    local pid_file="${WIN_LOGS}/nginx.pid"
+    if [[ ! -f "${pid_file}" ]]; then
+        log_warn "OpenResty is not running (no PID file). Skipping reload."
         log_info "Start OpenResty with: ${OPENRESTY_BIN} -c ${WIN_CONFIG_NATIVE}/${CONFIG_FILE}"
         return 0
     fi
@@ -290,6 +292,18 @@ main() {
     if [[ "${DRY_RUN}" == "true" ]]; then
         log_warn "DRY-RUN mode: No changes will be made"
         echo ""
+    fi
+
+    # Validate that specified config file exists in repository
+    if [[ ! -f "${REPO_CONFIG}/${CONFIG_FILE}" ]]; then
+        log_error "Configuration file not found: ${REPO_CONFIG}/${CONFIG_FILE}"
+        log_info "Available configuration files:"
+        for conf in "${REPO_CONFIG}"/*.conf; do
+            if [[ -f "${conf}" ]]; then
+                log_info "  - $(basename "${conf}")"
+            fi
+        done
+        exit 1
     fi
 
     # Check prerequisites
