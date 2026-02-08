@@ -100,10 +100,14 @@ pki:
   cert: F:/flatnet/config/nebula/host.crt
   key: F:/flatnet/config/nebula/host.key
 
+# Lighthouse の Nebula IP と実際のアドレスのマッピング
+static_host_map:
+  "10.100.0.1": ["<Lighthouse の社内LAN IP>:4242"]
+
 lighthouse:
   am_lighthouse: false
   hosts:
-    - "<Lighthouse の社内LAN IP>:4242"
+    - "10.100.0.1"
 
 listen:
   host: 0.0.0.0
@@ -308,10 +312,14 @@ pki:
   cert: F:/flatnet/config/nebula/host.crt
   key: F:/flatnet/config/nebula/host.key
 
+# Lighthouse の Nebula IP と実際のアドレスのマッピング
+static_host_map:
+  "10.100.0.1": ["<Lighthouse の社内LAN IP>:4242"]
+
 lighthouse:
   am_lighthouse: false
   hosts:
-    - "<Lighthouse の社内LAN IP>:4242"
+    - "10.100.0.1"
 
 listen:
   host: 0.0.0.0
