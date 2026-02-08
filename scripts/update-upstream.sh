@@ -40,6 +40,12 @@ if [[ -z "${WSL2_IP}" ]]; then
     echo "Error: Failed to get WSL2 IP address" >&2
     exit 1
 fi
+
+# IP アドレス形式のバリデーション（セキュリティ対策）
+if [[ ! "${WSL2_IP}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Error: Invalid IP address format: ${WSL2_IP}" >&2
+    exit 1
+fi
 echo "WSL2 IP: ${WSL2_IP}"
 
 # 設定ファイルの upstream IP を置換
@@ -49,7 +55,7 @@ for CONFIG_FILE in "${CONFIG_FILES[@]}"; do
     if [[ -f "${CONFIG_FILE}" ]]; then
         sed -i -E "s/server [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:/server ${WSL2_IP}:/g" "${CONFIG_FILE}"
         echo "Updated: ${CONFIG_FILE}"
-        ((UPDATED_COUNT++))
+        UPDATED_COUNT=$((UPDATED_COUNT + 1))
     fi
 done
 
