@@ -1,0 +1,139 @@
+# Alertmanager Configuration
+# Phase 4, Stage 1: Monitoring
+#
+# Routes alerts to appropriate receivers based on severity and component.
+# Default configuration uses a null receiver (logging only).
+# Configure email/slack receivers as needed for production.
+
+global:
+  # Default SMTP settings (configure for email alerts)
+  # smtp_smarthost: 'smtp.example.com:587'
+  # smtp_from: 'alertmanager@example.com'
+  # smtp_auth_username: 'alertmanager@example.com'
+  # smtp_auth_password: 'password'
+
+  # Slack webhook URL (configure for Slack alerts)
+  # slack_api_url: 'https://hooks.slack.com/services/xxx/yyy/zzz'
+
+  # Default resolve timeout
+  resolve_timeout: 5m
+
+# Alert templates
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Routing tree
+route:
+  # Default receiver
+  receiver: 'default-receiver'
+
+  # Group alerts by alertname and severity
+  group_by: ['alertname', 'severity']
+
+  # Wait time before sending initial notification
+  group_wait: 30s
+
+  # Wait time before sending new alerts for a group
+  group_interval: 5m
+
+  # Wait time before re-sending notification
+  repeat_interval: 4h
+
+  # Child routes
+  # Note: Using 'matchers' syntax (preferred in Alertmanager 0.22+)
+  routes:
+    # Critical alerts - immediate notification
+    - matchers:
+        - severity = "critical"
+      receiver: 'critical-receiver'
+      group_wait: 10s
+      repeat_interval: 1h
+
+    # Warning alerts - standard notification
+    - matchers:
+        - severity = "warning"
+      receiver: 'warning-receiver'
+      repeat_interval: 4h
+
+    # Gateway-specific alerts
+    - matchers:
+        - component = "gateway"
+      receiver: 'gateway-receiver'
+
+    # CNI Plugin alerts
+    - matchers:
+        - component = "cni-plugin"
+      receiver: 'cni-receiver'
+
+# Inhibition rules
+# Note: Using 'matchers' syntax (preferred in Alertmanager 0.22+)
+inhibit_rules:
+  # If GatewayDown is firing, suppress other gateway alerts
+  - source_matchers:
+      - alertname = "GatewayDown"
+    target_matchers:
+      - component = "gateway"
+      - alertname != "GatewayDown"
+    equal: ['instance']
+
+  # If CNIPluginDown is firing, suppress other CNI alerts
+  - source_matchers:
+      - alertname = "CNIPluginDown"
+    target_matchers:
+      - component = "cni-plugin"
+      - alertname != "CNIPluginDown"
+    equal: ['instance']
+
+  # Critical suppresses warning for same alert
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
+    equal: ['alertname']
+
+# Receivers
+receivers:
+  # Default receiver - logging only
+  - name: 'default-receiver'
+    # No external notification configured
+    # Alerts are visible in Alertmanager UI
+
+  # Critical alerts receiver
+  - name: 'critical-receiver'
+    # Configure for immediate notification
+    # Example: Slack, PagerDuty, Email
+    # slack_configs:
+    #   - channel: '#alerts-critical'
+    #     send_resolved: true
+    #     title: '{{ .Status | toUpper }}: {{ .CommonAnnotations.summary }}'
+    #     text: '{{ .CommonAnnotations.description }}'
+
+  # Warning alerts receiver
+  - name: 'warning-receiver'
+    # Configure for standard notification
+    # Example: Slack, Email
+
+  # Gateway-specific receiver
+  - name: 'gateway-receiver'
+    # Configure for gateway team notification
+
+  # CNI Plugin receiver
+  - name: 'cni-receiver'
+    # Configure for CNI plugin team notification
+
+# Example Slack configuration (uncomment and configure):
+# receivers:
+#   - name: 'slack-notifications'
+#     slack_configs:
+#       - channel: '#flatnet-alerts'
+#         send_resolved: true
+#         icon_emoji: ':warning:'
+#         title: '{{ template "slack.default.title" . }}'
+#         text: '{{ template "slack.default.text" . }}'
+#         actions:
+#           - type: button
+#             text: 'Runbook'
+#             url: '{{ (index .Alerts 0).Annotations.runbook }}'
+#           - type: button
+#             text: 'Silence'
+#             url: '{{ template "__alert_silence_link" . }}'

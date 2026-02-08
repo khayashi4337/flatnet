@@ -1,0 +1,71 @@
+# CNI Plugin Alert Rules
+# Phase 4, Stage 1: Monitoring
+#
+# Alerts for CNI Plugin health and operations
+# Note: These alerts will become active when CNI plugin metrics are implemented
+
+groups:
+  - name: cni-plugin
+    rules:
+      # CNI Plugin Down - Critical
+      - alert: CNIPluginDown
+        expr: up{job="cni-plugin"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: cni-plugin
+        annotations:
+          summary: "CNI Plugin is down"
+          description: "CNI Plugin metrics endpoint has been unreachable for more than 1 minute."
+          runbook: "Check CNI Plugin process status. Review system logs."
+
+      # IP Allocation Failures - Warning
+      - alert: IPAllocationFailures
+        expr: |
+          rate(flatnet_cni_ip_allocation_failures_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: cni-plugin
+        annotations:
+          summary: "IP allocation failures detected"
+          description: "CNI Plugin is experiencing IP allocation failures ({{ $value }} failures/s)."
+          runbook: "Check IP pool exhaustion. Review CNI configuration."
+
+      # Gateway Registration Failures - Warning
+      - alert: GatewayRegistrationFailures
+        expr: |
+          rate(flatnet_cni_gateway_registration_failures_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: cni-plugin
+        annotations:
+          summary: "Gateway registration failures"
+          description: "CNI Plugin failed to register containers with Gateway ({{ $value }} failures/s)."
+          runbook: "Check Gateway API availability. Review network connectivity."
+
+      # High Container Count - Warning
+      - alert: HighContainerCount
+        expr: flatnet_cni_active_containers > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: cni-plugin
+        annotations:
+          summary: "High container count"
+          description: "There are more than 100 active containers (current: {{ $value }})."
+          runbook: "Monitor resource usage. Consider scaling if needed."
+
+      # Slow CNI Operations - Warning
+      - alert: SlowCNIOperations
+        expr: |
+          histogram_quantile(0.95, sum(rate(flatnet_cni_operation_duration_seconds_bucket[5m])) by (le)) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: cni-plugin
+        annotations:
+          summary: "Slow CNI operations"
+          description: "CNI Plugin 95th percentile operation time exceeds 5 seconds."
+          runbook: "Check system resources. Review CNI plugin logs."

@@ -21,5 +21,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Environment files (may contain secrets)
+.env
+!.env.example
+
 # 参考用外部コード（解析対象・git管理外）
 vendor/reference/

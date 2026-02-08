@@ -1,0 +1,76 @@
+# Gateway Alert Rules
+# Phase 4, Stage 1: Monitoring
+#
+# Alerts for OpenResty Gateway health and performance
+
+groups:
+  - name: gateway
+    rules:
+      # Gateway Down - Critical
+      - alert: GatewayDown
+        expr: up{job="gateway"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: gateway
+        annotations:
+          summary: "Gateway is down"
+          description: "Flatnet Gateway has been unreachable for more than 1 minute. Check OpenResty service on Windows."
+          runbook: "Check Windows OpenResty service status and network connectivity."
+
+      # High Error Rate - Warning
+      - alert: HighErrorRate
+        expr: |
+          (
+            rate(flatnet_http_requests_total{status=~"5.."}[5m])
+            /
+            rate(flatnet_http_requests_total[5m])
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: gateway
+        annotations:
+          summary: "High error rate detected"
+          description: "Gateway error rate is above 5% for the last 5 minutes (current: {{ $value | humanizePercentage }})."
+          runbook: "Check Gateway logs for errors. Verify upstream services are healthy."
+
+      # High Latency - Warning
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95, sum(rate(flatnet_http_request_duration_seconds_bucket[5m])) by (le)) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: gateway
+        annotations:
+          summary: "High latency detected"
+          description: "Gateway 95th percentile latency is above 1 second (current: {{ $value | humanizeDuration }})."
+          runbook: "Check upstream service latency. Review Gateway resource usage."
+
+      # No Requests - Warning (possible connectivity issue)
+      - alert: GatewayNoRequests
+        expr: |
+          rate(flatnet_http_requests_total[5m]) == 0
+          and
+          up{job="gateway"} == 1
+        for: 15m
+        labels:
+          severity: warning
+          component: gateway
+        annotations:
+          summary: "No requests to Gateway"
+          description: "Gateway is up but has received no requests in the last 15 minutes."
+          runbook: "Verify client connectivity and DNS resolution."
+
+      # High Active Connections - Warning
+      - alert: HighActiveConnections
+        expr: flatnet_active_connections > 1000
+        for: 5m
+        labels:
+          severity: warning
+          component: gateway
+        annotations:
+          summary: "High number of active connections"
+          description: "Gateway has more than 1000 active connections (current: {{ $value }})."
+          runbook: "Check for connection leaks or traffic surge."
