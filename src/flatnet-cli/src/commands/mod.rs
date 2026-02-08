@@ -6,3 +6,4 @@ pub mod doctor;
 pub mod logs;
 pub mod ps;
 pub mod status;
+pub mod upgrade;
