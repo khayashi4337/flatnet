@@ -23,6 +23,14 @@ async fn main() -> Result<ExitCode> {
             ExitCode::SUCCESS
         }
         Commands::Doctor(args) => commands::doctor::run(args).await?,
+        Commands::Ps(args) => {
+            commands::ps::run(args).await?;
+            ExitCode::SUCCESS
+        }
+        Commands::Logs(args) => {
+            commands::logs::run(args).await?;
+            ExitCode::SUCCESS
+        }
     };
 
     Ok(exit_code)
