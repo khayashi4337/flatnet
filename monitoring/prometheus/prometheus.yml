@@ -1,0 +1,62 @@
+# Prometheus Configuration for Flatnet Monitoring
+# Phase 4, Stage 1
+#
+# Scrape targets:
+# - prometheus: Self-monitoring
+# - gateway: Windows OpenResty Gateway metrics (via host.containers.internal)
+# - node-exporter: WSL2 host system metrics
+# - cni-plugin: CNI Plugin metrics (future)
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'flatnet-monitor'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+# Load alert rules
+rule_files:
+  - "alerts/gateway.yml"
+  - "alerts/cni.yml"
+  - "alerts/system.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    metrics_path: /metrics
+
+  # Gateway metrics (OpenResty on Windows)
+  # Uses host.containers.internal to reach Windows host from container
+  - job_name: 'gateway'
+    static_configs:
+      - targets: ['host.containers.internal:9145']
+    metrics_path: /metrics
+    scrape_timeout: 10s
+    # Relabel to add job-specific labels
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'gateway'
+
+  # Node Exporter (system metrics)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    metrics_path: /metrics
+
+  # CNI Plugin metrics (future implementation)
+  # Uncomment when CNI plugin exposes metrics endpoint
+  # - job_name: 'cni-plugin'
+  #   static_configs:
+  #     - targets: ['host.containers.internal:9146']
+  #   metrics_path: /metrics
+  #   scrape_timeout: 10s

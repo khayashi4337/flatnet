@@ -1,0 +1,29 @@
+# Grafana Datasource Provisioning
+# Phase 4, Stage 1: Monitoring
+#
+# Automatically configures Prometheus as the default data source
+
+apiVersion: 1
+
+# Delete datasources that are no longer in this config
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+
+# Datasource definitions
+datasources:
+  # Prometheus - Primary metrics source
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: "15s"
+      httpMethod: POST
+      manageAlerts: true
+      prometheusType: Prometheus
+      prometheusVersion: "2.48.1"
+    version: 1

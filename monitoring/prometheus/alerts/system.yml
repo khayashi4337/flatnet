@@ -1,0 +1,96 @@
+# System Alert Rules
+# Phase 4, Stage 1: Monitoring
+#
+# Alerts for host system health (disk, memory, CPU)
+
+groups:
+  - name: system
+    rules:
+      # Disk Space Warning - 80%
+      - alert: DiskSpaceWarning
+        expr: |
+          (
+            (node_filesystem_size_bytes - node_filesystem_avail_bytes)
+            / node_filesystem_size_bytes
+          ) * 100 > 80
+          and
+          node_filesystem_size_bytes > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "Disk space warning"
+          description: "Disk usage on {{ $labels.mountpoint }} is above 80% (current: {{ $value | printf \"%.1f\" }}%)."
+          runbook: "Clean up unused files. Consider expanding disk space."
+
+      # Disk Space Critical - 90%
+      - alert: DiskSpaceCritical
+        expr: |
+          (
+            (node_filesystem_size_bytes - node_filesystem_avail_bytes)
+            / node_filesystem_size_bytes
+          ) * 100 > 90
+          and
+          node_filesystem_size_bytes > 0
+        for: 5m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "Disk space critical"
+          description: "Disk usage on {{ $labels.mountpoint }} is above 90% (current: {{ $value | printf \"%.1f\" }}%)."
+          runbook: "Immediately clean up files. Expand disk space urgently."
+
+      # High Memory Usage - Warning
+      - alert: HighMemoryUsage
+        expr: |
+          (
+            1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+          ) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is above 85% (current: {{ $value | printf \"%.1f\" }}%)."
+          runbook: "Identify memory-heavy processes. Consider adding memory."
+
+      # High CPU Usage - Warning
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is above 80% for 10 minutes (current: {{ $value | printf \"%.1f\" }}%)."
+          runbook: "Identify CPU-heavy processes. Consider scaling resources."
+
+      # Node Exporter Down - Warning
+      - alert: NodeExporterDown
+        expr: up{job="node-exporter"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "Node Exporter is down"
+          description: "Node Exporter has been unreachable for more than 2 minutes."
+          runbook: "Check node-exporter container status."
+
+      # High Network Errors - Warning
+      - alert: HighNetworkErrors
+        expr: |
+          rate(node_network_receive_errs_total[5m]) + rate(node_network_transmit_errs_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High network error rate"
+          description: "Network interface is experiencing errors ({{ $value | printf \"%.2f\" }} errors/s)."
+          runbook: "Check network interface health and cabling."
