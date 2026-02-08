@@ -985,7 +985,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "((node_filesystem_size_bytes - node_filesystem_avail_bytes) / node_filesystem_size_bytes) * 100",
+          "expr": "((node_filesystem_size_bytes{fstype!~\"tmpfs|squashfs|overlay\"} - node_filesystem_avail_bytes{fstype!~\"tmpfs|squashfs|overlay\"}) / node_filesystem_size_bytes{fstype!~\"tmpfs|squashfs|overlay\"}) * 100",
           "legendFormat": "{{ mountpoint }}",
           "refId": "A"
         }

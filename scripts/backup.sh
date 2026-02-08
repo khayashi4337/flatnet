@@ -112,6 +112,23 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Check required commands
+check_requirements() {
+    local missing=0
+    for cmd in curl jq; do
+        if ! command -v "$cmd" &> /dev/null; then
+            log_error "Required command not found: $cmd"
+            missing=1
+        fi
+    done
+    if [[ $missing -eq 1 ]]; then
+        log_error "Install missing commands and retry"
+        exit 1
+    fi
+}
+
+check_requirements
+
 # Create backup directory
 BACKUP_DATE=$(date +%Y%m%d_%H%M%S)
 BACKUP_DIR="$BACKUP_BASE_DIR/$BACKUP_DATE"

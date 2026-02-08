@@ -35,7 +35,7 @@
 #   - Re-run with same parameters to continue testing
 #   - Check ./results directory for individual test results
 
-set -e
+set -euo pipefail
 
 # Trap SIGINT for graceful shutdown
 INTERRUPTED=0

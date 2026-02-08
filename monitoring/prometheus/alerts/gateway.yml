@@ -22,10 +22,12 @@ groups:
       - alert: HighErrorRate
         expr: |
           (
-            rate(flatnet_http_requests_total{status=~"5.."}[5m])
+            sum(rate(flatnet_http_requests_total{status=~"5.."}[5m]))
             /
-            rate(flatnet_http_requests_total[5m])
+            sum(rate(flatnet_http_requests_total[5m]))
           ) > 0.05
+          and
+          sum(rate(flatnet_http_requests_total[5m])) > 0
         for: 5m
         labels:
           severity: warning
@@ -51,7 +53,7 @@ groups:
       # No Requests - Warning (possible connectivity issue)
       - alert: GatewayNoRequests
         expr: |
-          rate(flatnet_http_requests_total[5m]) == 0
+          sum(rate(flatnet_http_requests_total[5m])) == 0
           and
           up{job="gateway"} == 1
         for: 15m

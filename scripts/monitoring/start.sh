@@ -11,8 +11,37 @@
 # Options:
 #   --detach, -d    Run in background (default)
 #   --foreground    Run in foreground with logs
+#   -h, --help      Show this help message
 
 set -e
+
+VERSION="1.0.0"
+
+show_help() {
+    cat << 'EOF'
+Flatnet Monitoring Stack - Start Script
+Phase 4, Stage 1: Monitoring
+
+Usage:
+  ./scripts/monitoring/start.sh [OPTIONS]
+
+Options:
+  -d, --detach      Run in background (default)
+  --foreground      Run in foreground with logs
+  -h, --help        Show this help message
+  --version         Show version information
+
+Examples:
+  ./scripts/monitoring/start.sh              # Start in background
+  ./scripts/monitoring/start.sh --foreground # Start with logs visible
+
+Services started:
+  - Prometheus:    http://localhost:9090
+  - Grafana:       http://localhost:3000
+  - Alertmanager:  http://localhost:9093
+  - Node Exporter: http://localhost:9100/metrics
+EOF
+}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -38,9 +67,17 @@ while [[ $# -gt 0 ]]; do
             DETACH=false
             shift
             ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        --version)
+            echo "flatnet-monitoring-start v${VERSION}"
+            exit 0
+            ;;
         *)
             echo -e "${RED}Unknown option: $1${NC}"
-            echo "Usage: $0 [--detach|-d|--foreground]"
+            echo "Usage: $0 [--detach|-d|--foreground|--help]"
             exit 1
             ;;
     esac

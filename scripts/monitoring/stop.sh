@@ -9,8 +9,30 @@
 #
 # Options:
 #   --volumes, -v   Also remove volumes (data will be lost)
+#   -h, --help      Show this help message
 
 set -e
+
+VERSION="1.0.0"
+
+show_help() {
+    cat << 'EOF'
+Flatnet Monitoring Stack - Stop Script
+Phase 4, Stage 1: Monitoring
+
+Usage:
+  ./scripts/monitoring/stop.sh [OPTIONS]
+
+Options:
+  -v, --volumes     Also remove volumes (data will be lost)
+  -h, --help        Show this help message
+  --version         Show version information
+
+Examples:
+  ./scripts/monitoring/stop.sh            # Stop, keep data
+  ./scripts/monitoring/stop.sh --volumes  # Stop and remove all data
+EOF
+}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -32,9 +54,17 @@ while [[ $# -gt 0 ]]; do
             REMOVE_VOLUMES=true
             shift
             ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        --version)
+            echo "flatnet-monitoring-stop v${VERSION}"
+            exit 0
+            ;;
         *)
             echo -e "${RED}Unknown option: $1${NC}"
-            echo "Usage: $0 [--volumes|-v]"
+            echo "Usage: $0 [--volumes|-v|--help]"
             exit 1
             ;;
     esac

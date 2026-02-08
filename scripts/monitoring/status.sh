@@ -5,9 +5,55 @@
 # Shows the status of the monitoring stack.
 #
 # Usage:
-#   ./scripts/monitoring/status.sh
+#   ./scripts/monitoring/status.sh [OPTIONS]
+#
+# Options:
+#   -h, --help      Show this help message
 
 set -e
+
+VERSION="1.0.0"
+
+show_help() {
+    cat << 'EOF'
+Flatnet Monitoring Stack - Status Script
+Phase 4, Stage 1: Monitoring
+
+Usage:
+  ./scripts/monitoring/status.sh [OPTIONS]
+
+Options:
+  -h, --help        Show this help message
+  --version         Show version information
+
+Description:
+  Shows the status of the Flatnet monitoring stack, including:
+  - Container status
+  - Service health checks
+  - Prometheus targets
+  - Active alerts
+  - Resource usage
+EOF
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        --version)
+            echo "flatnet-monitoring-status v${VERSION}"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--help]"
+            exit 1
+            ;;
+    esac
+done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -68,7 +114,8 @@ echo ""
 # Check Prometheus targets
 echo -e "${YELLOW}Prometheus Targets:${NC}"
 if curl -s "http://localhost:9090/api/v1/targets" > /dev/null 2>&1; then
-    targets=$(curl -s "http://localhost:9090/api/v1/targets" | python3 -c "
+    if command -v python3 &> /dev/null; then
+        targets=$(curl -s "http://localhost:9090/api/v1/targets" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -83,7 +130,12 @@ try:
 except Exception as e:
     print(f'  Error parsing targets: {e}')
 " 2>/dev/null || echo "  (Unable to parse targets)")
-    echo "$targets"
+        echo "$targets"
+    elif command -v jq &> /dev/null; then
+        curl -s "http://localhost:9090/api/v1/targets" | jq -r '.data.activeTargets[] | "  \(.labels.job) (\(.labels.instance)): \(.health | ascii_upcase)"' 2>/dev/null || echo "  (Unable to parse targets)"
+    else
+        echo -e "  ${YELLOW}Install python3 or jq for detailed target info${NC}"
+    fi
 else
     echo -e "  ${RED}Unable to fetch targets (Prometheus may be down)${NC}"
 fi
@@ -92,7 +144,8 @@ echo ""
 # Check active alerts
 echo -e "${YELLOW}Active Alerts:${NC}"
 if curl -s "http://localhost:9090/api/v1/alerts" > /dev/null 2>&1; then
-    alerts=$(curl -s "http://localhost:9090/api/v1/alerts" | python3 -c "
+    if command -v python3 &> /dev/null; then
+        alerts=$(curl -s "http://localhost:9090/api/v1/alerts" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -108,7 +161,17 @@ try:
 except Exception as e:
     print(f'  Error parsing alerts: {e}')
 " 2>/dev/null || echo "  (Unable to parse alerts)")
-    echo "$alerts"
+        echo "$alerts"
+    elif command -v jq &> /dev/null; then
+        alert_output=$(curl -s "http://localhost:9090/api/v1/alerts" | jq -r '.data.alerts[] | "  \(.labels.alertname) [\(.labels.severity)]: \(.state)"' 2>/dev/null)
+        if [ -z "$alert_output" ]; then
+            echo "  No active alerts"
+        else
+            echo "$alert_output"
+        fi
+    else
+        echo -e "  ${YELLOW}Install python3 or jq for detailed alert info${NC}"
+    fi
 else
     echo -e "  ${RED}Unable to fetch alerts (Prometheus may be down)${NC}"
 fi

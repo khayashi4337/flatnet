@@ -53,6 +53,21 @@ log_step() {
     echo -e "${BLUE}[STEP]${NC} $1"
 }
 
+# Check required commands
+check_requirements() {
+    local missing=0
+    for cmd in curl jq; do
+        if ! command -v "$cmd" &> /dev/null; then
+            log_error "Required command not found: $cmd"
+            missing=1
+        fi
+    done
+    if [[ $missing -eq 1 ]]; then
+        log_error "Install missing commands and retry"
+        exit 1
+    fi
+}
+
 # Help message
 show_help() {
     cat << EOF
@@ -511,6 +526,9 @@ main() {
                 ;;
         esac
     done
+
+    # Check requirements before proceeding
+    check_requirements
 
     # Execute action
     case $action in

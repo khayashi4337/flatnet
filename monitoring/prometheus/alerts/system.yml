@@ -10,11 +10,11 @@ groups:
       - alert: DiskSpaceWarning
         expr: |
           (
-            (node_filesystem_size_bytes - node_filesystem_avail_bytes)
-            / node_filesystem_size_bytes
+            (node_filesystem_size_bytes{fstype!~"tmpfs|squashfs|overlay"} - node_filesystem_avail_bytes{fstype!~"tmpfs|squashfs|overlay"})
+            / node_filesystem_size_bytes{fstype!~"tmpfs|squashfs|overlay"}
           ) * 100 > 80
           and
-          node_filesystem_size_bytes > 0
+          node_filesystem_size_bytes{fstype!~"tmpfs|squashfs|overlay"} > 0
         for: 5m
         labels:
           severity: warning
@@ -28,11 +28,11 @@ groups:
       - alert: DiskSpaceCritical
         expr: |
           (
-            (node_filesystem_size_bytes - node_filesystem_avail_bytes)
-            / node_filesystem_size_bytes
+            (node_filesystem_size_bytes{fstype!~"tmpfs|squashfs|overlay"} - node_filesystem_avail_bytes{fstype!~"tmpfs|squashfs|overlay"})
+            / node_filesystem_size_bytes{fstype!~"tmpfs|squashfs|overlay"}
           ) * 100 > 90
           and
-          node_filesystem_size_bytes > 0
+          node_filesystem_size_bytes{fstype!~"tmpfs|squashfs|overlay"} > 0
         for: 5m
         labels:
           severity: critical

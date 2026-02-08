@@ -32,7 +32,7 @@
 #   DISK_CRIT_PERCENT   Disk usage critical threshold (default: 90)
 #   MEM_WARN_PERCENT    Memory usage warning threshold (default: 85)
 
-set -e
+set -eo pipefail
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
