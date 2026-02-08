@@ -22,6 +22,10 @@ pub enum Commands {
     /// Display system status
     #[command(about = "Display Flatnet system status")]
     Status(StatusArgs),
+
+    /// Run system diagnostics
+    #[command(about = "Run system diagnostics and check for issues")]
+    Doctor(DoctorArgs),
 }
 
 /// Arguments for the status command
@@ -38,4 +42,20 @@ pub struct StatusArgs {
     /// Watch interval in seconds (default: 2)
     #[arg(long, default_value = "2", value_name = "SECS", help = "Interval between updates in watch mode")]
     pub interval: u64,
+}
+
+/// Arguments for the doctor command
+#[derive(Parser, Debug)]
+pub struct DoctorArgs {
+    /// Output in JSON format
+    #[arg(long, help = "Output results in JSON format")]
+    pub json: bool,
+
+    /// Quiet mode - only show issues (for CI)
+    #[arg(long, short, help = "Only show warnings and errors")]
+    pub quiet: bool,
+
+    /// Verbose mode - show detailed information
+    #[arg(long, short, help = "Show detailed diagnostic information")]
+    pub verbose: bool,
 }
