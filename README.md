@@ -1,6 +1,6 @@
 # Flatnet
 
-NAT-free container networking for WSL2 + Podman.
+NAT-free container networking for WSL2 + Podman — with Gateway for zero-install client access.
 
 ## What is Flatnet?
 
@@ -12,6 +12,26 @@ After:  社内LAN → Gateway → コンテナ（フラット）
 ```
 
 **クライアント側のインストール不要** — ブラウザさえあれば、隣の席の人があなたのコンテナにアクセスできます。
+
+## How It Works
+
+```
+┌─────────────────┐     HTTP      ┌─────────────────┐     Bridge     ┌─────────────────┐
+│   クライアント   │ ──────────▶ │    Gateway      │ ──────────▶   │   コンテナ       │
+│  (ブラウザ)      │              │  (Windows側)    │               │  (WSL2/Podman)  │
+└─────────────────┘              └─────────────────┘               └─────────────────┘
+     何もインストール                  ↑                                    ↑
+     しなくていい                      │                                    │
+                                       │ 登録                               │
+                                       └────────────────────────────────────┘
+                                                CNI Plugin（起動時に自動登録）
+```
+
+1. **コンテナ起動時**: CNI Plugin がコンテナの IP を Gateway に自動登録
+2. **アクセス時**: クライアントは Gateway に HTTP リクエストを送る
+3. **ルーティング**: Gateway がリクエストを適切なコンテナに転送
+
+Gateway が「翻訳者」として機能するため、クライアントは NAT の存在を意識する必要がありません。
 
 ### Components
 
