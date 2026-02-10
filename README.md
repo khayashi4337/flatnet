@@ -89,7 +89,11 @@ handle
 
 - [slackhq/nebula-cni](https://github.com/slackhq/nebula-cni) — Slack による Nebula 用 CNI Plugin（Go 実装）
 
-Flatnet との違い：nebula-cni はコンテナを Nebula ネットワークに参加させるもので、アクセス側にも Nebula クライアントが必要です。Flatnet は Gateway が HTTP を中継するため、クライアント側のインストールが不要です。
+**誰のために作るかが違う。**
+
+nebula-cni は Nebula ユーザー向け。アクセスする側にも Nebula クライアントが必要です。
+
+Flatnet は「Nebula を入れてない人」のために作りました。隣の席の人がインストール無しであなたのコンテナを見れる。ブラウザさえあればいい。技術力の差ではなく、想定ユーザーの違いです。
 
 ## Documentation
 
